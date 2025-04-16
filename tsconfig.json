@@ -18,6 +18,7 @@
   },
   "include": [
     "src",
-    "src/types/worker.d.ts" // 型定義を追加
+    "src/types/worker.d.ts", // 型定義を追加
+    "src/types/global.d.ts" // 型定義を追加
   ]
 }

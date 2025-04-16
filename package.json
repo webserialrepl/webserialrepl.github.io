@@ -28,6 +28,7 @@
   },
   "scripts": {
     "dev": "vite --host",
+    "prebuild": "node scripts/increment-build-number.js",
     "build": "tsc && vite build",
     "preview": "vite preview"
   }

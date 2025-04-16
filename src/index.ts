@@ -35,6 +35,19 @@ self.MonacoEnvironment = {
   },
 };
 
+document.addEventListener('DOMContentLoaded', () => {
+  const buildInfo = document.createElement('div');
+  buildInfo.textContent = `Build Number: ${__BUILD_NUMBER__}`;
+  buildInfo.style.position = 'absolute';
+  buildInfo.style.bottom = '10px';
+  buildInfo.style.right = '10px';
+  buildInfo.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+  buildInfo.style.color = 'white';
+  buildInfo.style.padding = '5px 10px';
+  buildInfo.style.borderRadius = '5px';
+  document.body.appendChild(buildInfo);
+});
+
 /**
  * REPL用ターミナル
  */

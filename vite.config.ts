@@ -1,6 +1,12 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import webmanifest from './src/manifest.json';
+import fs from 'fs';
+import path from 'path';
+
+// ビルド番号を読み込む
+const buildNumberFile = path.resolve(__dirname, './build-number.json');
+const buildData = JSON.parse(fs.readFileSync(buildNumberFile, 'utf8'));
 
 export default defineConfig({
   base: './',
@@ -23,5 +29,8 @@ export default defineConfig({
   ],
   optimizeDeps: {
     include: ['monaco-editor'],
+  },
+  define: {
+    __BUILD_NUMBER__: JSON.stringify(buildData.buildNumber),
   },
 });

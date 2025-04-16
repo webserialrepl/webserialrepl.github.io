@@ -282,8 +282,9 @@ class PicoSerial {
    * Releases the lock held by the `picowriter` if it exists.
    * This method checks if the `picowriter` is defined and, if so,
    * calls its `releaseLock` method to release any held resources.
-   */
-  releaseLock() {
+   * @return {void}
+  */
+  releaseLock(): void {
     if (this.picowriter) {
       this.picowriter.releaseLock();
     }
@@ -295,11 +296,13 @@ class PicoSerial {
    * @return A promise that resolves when the write operation is complete.
    */
   async picowrite(data: Uint8Array) {
-    await this.picowriter?.write(data);
+    await this.picowriter?.write(
+        data
+    );
   }
 }
 
-var picoserial = new PicoSerial();
+const picoserial = new PicoSerial();
 
 document.addEventListener('DOMContentLoaded', async () => {
   picoserial.portSelector =
@@ -308,7 +311,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('connect') as HTMLButtonElement;
 
   // picoserial = new PicoSerial(portSelector, connectButton);
-  
+
   const ports: (SerialPort)[] = await navigator.serial.getPorts();
   ports.forEach((port) => picoserial.addNewPort(port));
 
@@ -489,7 +492,6 @@ async function* readFromPort(
     const chunk = decoder.decode(value, {stream: true});
     yield chunk;
 
-    // targetChar が false でない場合にのみチェック
     if (targetChar && chunk.includes(targetChar)) {
       return;
     }

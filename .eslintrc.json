@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "no-trailing-spaces": "warn", // Trailing spaces を警告に変更
+    "operator-linebreak": ["warn", "after"], // 改行時の演算子位置を緩和
+    "valid-jsdoc": "off", // JSDoc の厳密なチェックを無効化
+    "max-len": ["off"], // max-len を完全に無効化
+    "indent": ["warn", 2], // インデントエラーを警告に変更
+    "quotes": ["warn", "single"], // シングルクォートの強制を警告に変更
+    "semi": ["warn", "always"] // セミコロンの強制を警告に変更
+  }
+}

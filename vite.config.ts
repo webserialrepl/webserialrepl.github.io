@@ -1,22 +1,27 @@
-import eslint from 'vite-plugin-eslint'
-import { VitePWA } from 'vite-plugin-pwa'
+import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 import webmanifest from './src/manifest.json';
 
-export default {
+export default defineConfig({
   base: './',
   build: {
-    outDir: 'docs'
+    outDir: 'docs',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'monaco-editor': ['monaco-editor'],
+        },
+      },
+    },
   },
   plugins: [
-    eslint({
-      // ESLintの設定を追加
-      failOnError: false, // エラーでビルドを失敗させない
-      failOnWarning: false, // 警告でビルドを失敗させない
-    }),
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
       manifest: webmanifest,
-    })
-  ]
-}
+    }),
+  ],
+  optimizeDeps: {
+    include: ['monaco-editor'],
+  },
+});

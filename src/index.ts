@@ -19,6 +19,21 @@ import {FitAddon} from 'xterm-addon-fit';
 import {WebLinksAddon} from 'xterm-addon-web-links';
 import 'xterm/css/xterm.css';
 import * as monaco from 'monaco-editor';
+import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
+import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
+import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
+
+self.MonacoEnvironment = {
+  getWorker: function (_moduleId: string, label: string) {
+    if (label === 'json') {
+      return new JsonWorker();
+    }
+    if (label === 'typescript' || label === 'javascript') {
+      return new TsWorker();
+    }
+    return new EditorWorker();
+  },
+};
 
 /**
  * REPL用ターミナル

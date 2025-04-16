@@ -15,5 +15,9 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "skipLibCheck": true
-  }
+  },
+  "include": [
+    "src",
+    "src/types/worker.d.ts" // 型定義を追加
+  ]
 }

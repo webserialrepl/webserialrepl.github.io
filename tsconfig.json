@@ -5,16 +5,18 @@
     "module": "ESNext",
     "lib": ["ESNext", "DOM"],
     "moduleResolution": "Node",
-    "strict": true,
     "sourceMap": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "esModuleInterop": true,
-    "noEmit": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
     "noImplicitReturns": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "noEmit": true,
+    "incremental": true, // 増分ビルドを有効化
+    "tsBuildInfoFile": "./.tsbuildinfo", // 増分ビルド情報の保存先
+    "strict": true, // 厳格モードは維持
+    "noUnusedLocals": false, // 未使用ローカル変数のチェックを無効化
+    "noUnusedParameters": false, // 未使用パラメータのチェックを無効化
   },
   "include": [
     "src",

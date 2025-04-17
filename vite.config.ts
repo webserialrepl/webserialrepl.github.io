@@ -12,10 +12,12 @@ export default defineConfig({
   base: './',
   build: {
     outDir: 'docs',
+    sourcemap: false, // ソースマップを無効化（必要な場合は true に設定）
+    minify: 'esbuild', // 高速な esbuild を使用して最小化
     rollupOptions: {
       output: {
         manualChunks: {
-          'monaco-editor': ['monaco-editor'],
+          'monaco-editor': ['monaco-editor'], // 手動チャンク分割
         },
       },
     },
@@ -28,7 +30,7 @@ export default defineConfig({
     }),
   ],
   optimizeDeps: {
-    include: ['monaco-editor'],
+    include: ['monaco-editor'], // 必要な依存関係を事前バンドル
   },
   define: {
     __BUILD_NUMBER__: JSON.stringify(buildData.buildNumber),

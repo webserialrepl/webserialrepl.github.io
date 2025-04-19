@@ -62,7 +62,7 @@ export class DeviceCommunicator {
     }
     // 新しいターミナルを起動
     await this.getReadablePort();
-    await this.getWritablePort();
+    // await this.getWritablePort();
   }
 
   /**
@@ -70,10 +70,16 @@ export class DeviceCommunicator {
    * @param {(chunk: string) => void} callback - ターミナル出力を処理するコールバック関数
    */
   public startTerminalOutput(callback: (chunk: string) => void): void {
+    this.getWritablePort();
     this.terminalOutputCallback = callback;
     this.resumeTerminalOutput(); // ターミナル出力を再開
   }
 
+  public writeDeive(chunk: string): void {
+    if (!this.isPortBusy) {
+        this.serialPortManager.picowrite(new TextEncoder().encode(chunk));
+    }
+  }
 /**
  * ターミナル出力を再開
  */
@@ -82,7 +88,7 @@ export class DeviceCommunicator {
       if (!this.isTerminalOutput) {
       console.log('Resuming terminal output...');
       this.isTerminalOutput = true;
-      this.releaseWritablePort();   // 書き込みポートを解放
+      // this.releaseWritablePort();   // 書き込みポートを解放
 
       // ターミナル出力を再開するロジック
       const reader = await this.getReadablePort();

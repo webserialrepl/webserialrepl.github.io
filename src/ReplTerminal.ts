@@ -32,7 +32,7 @@ export class ReplTerminal extends Terminal {
       console.log('Data received:', data);
       // デバイスにデータを送信
       try {
-        await this.device.sendCommand(data);
+        await this.device.writeDeive(data);
         console.log('Data sent to device:', data);
       } catch (error) {
         console.error('Error writing to device:', error);

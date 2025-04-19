@@ -46,7 +46,8 @@ const device = new DeviceCommunicator(serialPortManager);
 // スクロールバックバッファを 10,000 行に設定。
 const repl_terminal = new ReplTerminal(
   { scrollback: 10_000 }, // ターミナルのオプション
-  new FitAddon() // FitAddon インスタンス
+  new FitAddon(), // FitAddon インスタンス
+  device, // DeviceCommunicator インスタンス
 );
 
 async function repl_terminal_write(chunk: string): Promise<void> {
@@ -118,8 +119,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const contents = repl_terminal.getSelection();
     repl_terminal.clearSelection();
     const linkContent = URL.createObjectURL(
-        new Blob([new TextEncoder().encode(contents).buffer],
-            {type: 'text/plain'}));
+      new Blob([contents], { type: 'text/plain' })
+    );
     const fauxLink = document.createElement('a');
     fauxLink.download = `terminal_content_${new Date().getTime()}.txt`;
     fauxLink.href = linkContent;

@@ -7,7 +7,7 @@ export class SerialPortManager {
   public connectButton: HTMLButtonElement | undefined = undefined;
   private portCounter = 1;
   public picoport: SerialPort | undefined;
-  public picoreader: ReadableStreamDefaultReader | undefined;
+  public picoreader: ReadableStreamDefaultReader | undefined = undefined;
   private picowriter: WritableStreamDefaultWriter | null = null;
 
   findPortOption(port: SerialPort): PortOption | null {
@@ -127,7 +127,7 @@ export class SerialPortManager {
     return this.picowriter;
   }
 
-  releaseLock(): void {
+  releaseWritablePort(): void {
     if (this.picowriter) {
       this.picowriter.releaseLock();
     }

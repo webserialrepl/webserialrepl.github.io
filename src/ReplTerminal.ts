@@ -10,6 +10,8 @@ export class ReplTerminal extends Terminal {
    * @param {ITerminalOptions} options - ターミナルのオプション設定。
    * @param {FitAddon} fitAddon - ターミナルのサイズを自動調整する FitAddon インスタンス。
    */
+
+
   constructor(options: ITerminalOptions, fitAddon: FitAddon) {
     super(options);
 
@@ -23,7 +25,8 @@ export class ReplTerminal extends Terminal {
     // データ入力イベントをリッスンし、デバイスにコマンドを送信。
     this.onData((data) => {
       console.log('Data received:', data);
-      // 必要に応じてデバイスに送信するロジックを追加
+      // ターミナルにデータを書き込む
+      this.write(data);
     });
   }
 }

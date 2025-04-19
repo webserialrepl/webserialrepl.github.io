@@ -49,80 +49,27 @@ const repl_terminal = new ReplTerminal(
   new FitAddon() // FitAddon インスタンス
 );
 
-/**
- * read the port.
- */
-async function readpicoport(): Promise<void> {
-  // console.log('readpicoport!');
-  await device.clearpicoport(false, async (chunk)=> {
-    // console.log('chunk:', chunk);
-    // ターミナルに出力
-    await new Promise<void>((resolve) => {
-      repl_terminal.write(chunk, resolve);
-    });
+async function repl_terminal_write(chunk: string): Promise<void> {
+  // ターミナルに出力
+  await new Promise<void>((resolve) => {
+    repl_terminal.write(chunk, resolve);
   });
-  // console.log('!!readpicoport!!');
 }
 
-
-/**
- * Load main.py from the MicroPython device and display it in the editor.
- *
- * @param {monaco.editor.IStandaloneCodeEditor} editor
- *  - The Monaco editor instance.
- */
+// temp.pyを読み込む関数
 async function loadTempPy(editor: monaco.editor.IStandaloneCodeEditor) {
-  if (serialPortManager.picoreader) {
-    await serialPortManager.picoreader.cancel(); // ターミナル出力を停止
-  }
+  console.log('loadTempPy...');
   const filename = 'temp.py';
-  if (device.getWritablePort()) {
-    await device.write('\x01'); // CTRL+A：raw モード
-    await device.write('import os\r');
-    await device.write(`with open("${filename}", "rb") as f:\r`);
-    await device.write('  import ubinascii\r');
-    await device.write('  print(ubinascii.hexlify(f.read()))\r');
-    await device.write('\x04'); // CTRL+D
-    device.releaseLock();
-
-    await device.clearpicoport('OK', null); // ">OK"を待つ
-    const result = await device.clearpicoport('\x04', null); // CTRL-Dを待つ
-
-    /**
-     * b'...'形式のバイナリデータをUint8Arrayに変換する関数
-     * @param {string} binaryStr - b'...'形式のバイナリデータ文字列
-     * @return {Uint8Array} - 変換されたUint8Array
-     */
-    function binaryStringToUint8Array(binaryStr: string): Uint8Array {
-      // プレフィックスb'とサフィックス'を取り除く
-      let hexStr = binaryStr.slice(2, -1);
-      // 文字列の長さが奇数の場合、先頭に0を追加
-      if (hexStr.length % 2 !== 0) {
-        hexStr = hexStr + '0';
-      }
-      // 2文字ごとに分割してUint8Arrayに変換
-      const byteArray = new Uint8Array(hexStr.length / 2);
-      for (let i = 0; i < hexStr.length; i += 2) {
-        byteArray[i / 2] = parseInt(hexStr.substr(i, 2), 16);
-      }
-      // 最後のデータがNULLの場合は除外
-      if (byteArray[byteArray.length - 1] === 0) {
-        return byteArray.slice(0, -1);
-      }
-      return byteArray;
-    }
-
-    // ファイル内容を表示
-    console.log('result:', result);
-    const binaryData = binaryStringToUint8Array(result);
-    console.log('binary dump:', binaryData);
-    const text = new TextDecoder('utf-8').decode(binaryData);
+  const file = await device.readFile(filename);
+  if (file) {
+    // Uint8ArrayをUTF-8文字列にデコード
+    const text = new TextDecoder('utf-8').decode(file);
     console.log('text:', text);
-    device.sendCommand('\x02'); // CTRL+B
     // エディタに結果を表示
     editor.setValue(text);
+  } else {
+    console.error('Failed to read file:', filename);
   }
-  readpicoport(); // ターミナル出力を再開
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -208,7 +155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       serialPortManager.disconnectFromPort();
     } else {
       await serialPortManager.openpicoport(); // ポートを開く
-      await readpicoport(); // ポートから読み取りターミナルに出力
+      await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
     }
   });
 
@@ -234,6 +181,11 @@ document.addEventListener('DOMContentLoaded', () => {
       language: 'python',
       theme: 'vs-dark',
     });
+  // 改行コードを LF に設定
+  const model = editor.getModel();
+  if (model) {
+    model.setEOL(monaco.editor.EndOfLineSequence.LF);
+  }
 
   // Load main.pyボタンのクリックイベント
   const loadFileButton =
@@ -258,12 +210,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const text = editor.getValue();
     const binaryData = stringToUint8Array(text);
     await device.writeFile('temp.py', binaryData); // エディタの内容をファイルに書き込む
-    readpicoport(); // ターミナル出力を再開
   });
 
   // run Code ボタンのクリックイベント
-  const runCodeButton =
-    document.getElementById('runCodeButton') as HTMLButtonElement;
+  const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
   runCodeButton.addEventListener('click', async () => {
     // CTRL+A, コード, CTRL+D, CTRL+B
     const text = '\x01' + editor.getValue() + '\x04\x02';
@@ -271,8 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // STOPボタン：CTRL-C を送信
-  const stopButton =
-    document.getElementById('stopButton') as HTMLButtonElement;
+  const stopButton = document.getElementById('stopButton') as HTMLButtonElement;
   stopButton.addEventListener('click', async ()=> {
     await device.sendCommand('\x03'); // CTRL+C
   });

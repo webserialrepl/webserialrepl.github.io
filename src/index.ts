@@ -19,6 +19,7 @@ import {FitAddon} from 'xterm-addon-fit';
 import {WebLinksAddon} from 'xterm-addon-web-links';
 import 'xterm/css/xterm.css';
 import { SerialPortManager } from './SerialPortManager';
+import { DeviceCommunicator } from './DeviceCommunicator';
 
 import * as monaco from 'monaco-editor';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
@@ -37,11 +38,25 @@ self.MonacoEnvironment = {
   },
 };
 
-// SerialPortManager クラスのインスタンスを作成
-// const serialPortManager = new SerialPortManager();
-// const picoserial = new PicoSerial();
-const picoserial = new SerialPortManager();
+// SerialPortManager と DeviceCommunicator のインスタンスを作成
+const serialPortManager = new SerialPortManager();
+const device = new DeviceCommunicator(serialPortManager);
 
+
+/**
+ * read the port.
+ */
+async function readpicoport(): Promise<void> {
+  // console.log('readpicoport!');
+  await device.clearpicoport(false, async (chunk)=> {
+    // console.log('chunk:', chunk);
+    // ターミナルに出力
+    await new Promise<void>((resolve) => {
+      term.write(chunk, resolve);
+    });
+  });
+  // console.log('!!readpicoport!!');
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   const buildInfo = document.createElement('div');
@@ -79,10 +94,10 @@ class ReplTerminal extends Terminal {
     // Webリンクをクリック可能にするアドオンをロード。
     this.loadAddon(new WebLinksAddon());
 
-    // データ入力イベントをリッスンし、Pico デバイスにコマンドを送信。
+    // データ入力イベントをリッスンし、device デバイスにコマンドを送信。
     this.onData((data) => {
-      if (pico) {
-        pico.sendCommand(data);
+      if (device) {
+        device.sendCommand(data);
       }
     });
   }
@@ -152,201 +167,38 @@ function downloadTerminalContents(): void {
  * シリアルポートの選択肢を追加し、接続ボタンのイベントリスナーを設定する。
  */
 document.addEventListener('DOMContentLoaded', async () => {
-  picoserial.portSelector =
+  serialPortManager.portSelector =
     document.getElementById('ports') as HTMLSelectElement;
-  picoserial.connectButton =
+  serialPortManager.connectButton =
     document.getElementById('connect') as HTMLButtonElement;
 
-  // picoserial = new PicoSerial(portSelector, connectButton);
 
   const ports: (SerialPort)[] = await navigator.serial.getPorts();
-  ports.forEach((port) => picoserial.addNewPort(port));
+  ports.forEach((port) => serialPortManager.addNewPort(port));
 
-  picoserial.connectButton.addEventListener('click', async () => {
-    if (picoserial.picoport) {
-      picoserial.disconnectFromPort();
+  serialPortManager.connectButton.addEventListener('click', async () => {
+    if (serialPortManager.picoport) {
+      serialPortManager.disconnectFromPort();
     } else {
-      await picoserial.openpicoport(); // ポートを開く
-      await pico.readpicoport(); // ポートから読み取りターミナルに出力
+      await serialPortManager.openpicoport(); // ポートを開く
+      await readpicoport(); // ポートから読み取りターミナルに出力
     }
   });
 
   // These events are not supported by the polyfill.
   // https://github.com/google/web-serial-polyfill/issues/20
   navigator.serial.addEventListener('connect', (event) => {
-    const portOption = picoserial.addNewPort(event.target as SerialPort);
+    const portOption = serialPortManager.addNewPort(event.target as SerialPort);
     portOption.selected = true;
   });
   navigator.serial.addEventListener('disconnect', (event) => {
-    const portOption = picoserial.findPortOption(event.target as SerialPort);
+    const portOption = serialPortManager.findPortOption(event.target as SerialPort);
     if (portOption) {
       portOption.remove();
     }
   });
 });
 
-/**
- * Class representing a Pico device.
- */
-class Pico {
-  /**
-   * Prepare the writable port.
-   * @return {WritableStreamDefaultWriter | null}
-   * The writer instance or null if not available.
-   */
-  getWritablePort() {
-    return picoserial.getWritablePort();
-  }
-
-  /**
-   * Release the picowriter lock.
-   */
-  releaseLock() {
-    picoserial.releaseLock();
-  }
-
-  /**
-   * Write a string to the picowriter.
-   * @param {string} s - The string to write.
-   * @throws {Error} If the picowriter is not available.
-   */
-  async write(s: string) {
-    await picoserial.picowrite(new TextEncoder().encode(s));
-  }
-
-  /**
-   * Send command to the Pico device.
-   * @param {string} command - The command to send.
-   */
-  async sendCommand(command: string) {
-    if (this.getWritablePort()) {
-      await this.write(command);
-      this.releaseLock();
-    }
-  }
-
-  /**
-   * 読み込みバッファをクリアし、特定の文字を待ち、それまでに受信した文字を返す
-   * @param {string | false} targetChar
-   *  - 待機する特定の文字、またはチェックを無効にするためのfalse
-   * @param {(chunk: string) => void} callback
-   *  - チャンクを処理するコールバック関数
-   * @return {Promise<string>} - 受信した文字列を返すプロミス
-   */
-  async clearpicoport(
-      targetChar: string | false,
-      callback: ((chunk: string) => void) | null
-  ): Promise<string> {
-    let result = '';
-    if (picoserial.picoport && picoserial.picoport.readable) {
-      picoserial.picoreader = picoserial.picoport.readable.getReader();
-      const generator = readFromPort(picoserial.picoreader, targetChar);
-      if (picoserial.picoreader) {
-        try {
-          for await (const chunk of generator) {
-            if (callback) {
-              callback(chunk);
-            }
-            if (targetChar && chunk.includes(targetChar)) {
-              // 特定の文字が含まれている部分を除外
-              const [beforeTarget] = chunk.split(targetChar);
-              result += beforeTarget;
-              break;
-            } else {
-              result += chunk;
-            }
-          }
-          // console.log('DONE!!!!!!!!!');
-        } catch (e) {
-          console.error(e);
-          await new Promise<void>((resolve) => {
-            if (e instanceof Error) {
-              term.writeln(`<ERROR: ${e.message}>`, resolve);
-            }
-          });
-        } finally {
-          picoserial.picoreader.releaseLock();
-          picoserial.picoreader = undefined;
-        }
-      }
-    }
-    return result;
-  }
-
-  /**
-   * read the port.
-   */
-  async readpicoport(): Promise<void> {
-    // console.log('readpicoport!');
-    await this.clearpicoport(false, async (chunk)=> {
-      // console.log('chunk:', chunk);
-      // ターミナルに出力
-      await new Promise<void>((resolve) => {
-        term.write(chunk, resolve);
-      });
-    });
-    // console.log('!!readpicoport!!');
-  }
-
-  /**
-   * Write a file to the MicroPython device.
-   * @param {string} filename - The name of the file.
-   * @param {string} content - The content to write to the file.
-   */
-  async writeFile(filename: string, content: Uint8Array) {
-    if (picoserial.picoreader) {
-      await picoserial.picoreader.cancel(); // ターミナル出力を停止
-    }
-    this.clearpicoport(false, null); // ターミナル出力せずに読み込み（バッファをクリア）
-    if (this.getWritablePort()) {
-      await this.write('\x01'); // CTRL+A
-      await this.write(`with open("${filename}", "wb") as f:\r`);
-      const chunk = JSON.stringify(Array.from(content));
-      // console.log('chunk:', chunk);
-      await this.write(`  f.write(bytes(${chunk}))\r`);
-      await this.write('\x04'); // CTRL+D
-      this.releaseLock();
-      pico.sendCommand('\x02'); // CTRL+B
-    }
-    if (picoserial.picoreader) {
-      await picoserial.picoreader.cancel(); // ターミナル出力を停止
-    }
-    this.readpicoport(); // ターミナル出力を再開
-  }
-}
-
-/**
- * シリアルポートからデータを読み取るジェネレーター関数
- * @param {ReadableStreamDefaultReader} reader
- *  - シリアルポートのリーダー
- * @param {string | false} targetChar
- *  - 待機する特定の文字、またはチェックを無効にするためのfalse
- * @return {AsyncGenerator<string>}
- *  - データチャンクを文字列として返す非同期ジェネレーター
- */
-async function* readFromPort(
-    reader: ReadableStreamDefaultReader,
-    targetChar: string | false
-): AsyncGenerator<string> {
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const {value, done} = await reader.read();
-    if (done) {
-      return;
-    }
-
-    const chunk = decoder.decode(value, {stream: true});
-    yield chunk;
-
-    if (targetChar && chunk.includes(targetChar)) {
-      return;
-    }
-  }
-}
-
-// Pico クラスのインスタンスを作成
-const pico = new Pico();
 
 /**
  * b'...'形式のバイナリデータをUint8Arrayに変換する関数
@@ -379,21 +231,21 @@ function binaryStringToUint8Array(binaryStr: string): Uint8Array {
  *  - The Monaco editor instance.
  */
 async function loadTempPy(editor: monaco.editor.IStandaloneCodeEditor) {
-  if (picoserial.picoreader) {
-    await picoserial.picoreader.cancel(); // ターミナル出力を停止
+  if (serialPortManager.picoreader) {
+    await serialPortManager.picoreader.cancel(); // ターミナル出力を停止
   }
   const filename = 'temp.py';
-  if (pico.getWritablePort()) {
-    await pico.write('\x01'); // CTRL+A：raw モード
-    await pico.write('import os\r');
-    await pico.write(`with open("${filename}", "rb") as f:\r`);
-    await pico.write('  import ubinascii\r');
-    await pico.write('  print(ubinascii.hexlify(f.read()))\r');
-    await pico.write('\x04'); // CTRL+D
-    pico.releaseLock();
+  if (device.getWritablePort()) {
+    await device.write('\x01'); // CTRL+A：raw モード
+    await device.write('import os\r');
+    await device.write(`with open("${filename}", "rb") as f:\r`);
+    await device.write('  import ubinascii\r');
+    await device.write('  print(ubinascii.hexlify(f.read()))\r');
+    await device.write('\x04'); // CTRL+D
+    device.releaseLock();
 
-    await pico.clearpicoport('OK', null); // ">OK"を待つ
-    const result = await pico.clearpicoport('\x04', null); // CTRL-Dを待つ
+    await device.clearpicoport('OK', null); // ">OK"を待つ
+    const result = await device.clearpicoport('\x04', null); // CTRL-Dを待つ
 
     // ファイル内容を表示
     console.log('result:', result);
@@ -401,11 +253,11 @@ async function loadTempPy(editor: monaco.editor.IStandaloneCodeEditor) {
     console.log('binary dump:', binaryData);
     const text = new TextDecoder('utf-8').decode(binaryData);
     console.log('text:', text);
-    pico.sendCommand('\x02'); // CTRL+B
+    device.sendCommand('\x02'); // CTRL+B
     // エディタに結果を表示
     editor.setValue(text);
   }
-  pico.readpicoport(); // ターミナル出力を再開
+  readpicoport(); // ターミナル出力を再開
 }
 
 /**
@@ -440,7 +292,8 @@ document.addEventListener('DOMContentLoaded', () => {
   saveFileButton.addEventListener('click', async () => {
     const text = editor.getValue();
     const binaryData = stringToUint8Array(text);
-    await pico.writeFile('temp.py', binaryData); // エディタの内容をファイルに書き込む
+    await device.writeFile('temp.py', binaryData); // エディタの内容をファイルに書き込む
+    readpicoport(); // ターミナル出力を再開
   });
 
   // run Code ボタンのクリックイベント
@@ -449,13 +302,13 @@ document.addEventListener('DOMContentLoaded', () => {
   runCodeButton.addEventListener('click', async () => {
     // CTRL+A, コード, CTRL+D, CTRL+B
     const text = '\x01' + editor.getValue() + '\x04\x02';
-    await pico.sendCommand(text); // エディタの内容を実行
+    await device.sendCommand(text); // エディタの内容を実行
   });
 
   // STOPボタン：CTRL-C を送信
   const stopButton =
     document.getElementById('stopButton') as HTMLButtonElement;
   stopButton.addEventListener('click', async ()=> {
-    await pico.sendCommand('\x03'); // CTRL+C
+    await device.sendCommand('\x03'); // CTRL+C
   });
 });

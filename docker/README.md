@@ -25,7 +25,6 @@ npm run dev
 ```
 
 ## クラスの説明
-旧：PicoSerial
 SerialPortManager
 このクラスは、シリアルポートの選択や接続、切断を管理しています。
 

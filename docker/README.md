@@ -23,3 +23,15 @@ To start a local development server run,
 ```sh
 npm run dev
 ```
+
+## クラスの説明
+旧：PicoSerial
+SerialPortManager
+このクラスは、シリアルポートの選択や接続、切断を管理しています。
+
+旧：Pico
+DeviceCommunicator
+このクラスは、シリアルポートを介してデバイスと通信するためのロジックを提供しています。
+
+ReplTerminal
+このクラスは、REPL（Read-Eval-Print Loop）用のターミナルを表しています。

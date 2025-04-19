@@ -35,4 +35,8 @@ export default defineConfig({
   define: {
     __BUILD_NUMBER__: JSON.stringify(buildData.buildNumber),
   },
+  server: {
+    host: '0.0.0.0', // Docker コンテナ内で外部からアクセス可能にする
+    port: 5173, // 必要に応じてポートを変更
+  },
 });

@@ -12,7 +12,7 @@ export class DeviceCommunicator {
   }
 
   /**
-   * ポートを占有する
+   * リードポートのループを止めて、ポートを占有する
    */
   private async occupyTerminal(): Promise<void> {
     if (this.isPortBusy) {
@@ -38,7 +38,6 @@ export class DeviceCommunicator {
       } catch (error) {
         console.error('Error canceling the reader:', error);
       }
-
   }
 
   /**
@@ -46,22 +45,13 @@ export class DeviceCommunicator {
    * @param {(chunk: string) => void} callback - ターミナル出力を処理するコールバック関数
    */
   public async startTerminalOutput(callback: (chunk: string) => void): Promise<void> {
-    this.getWritablePort(); // 書き込みポートの準備
+    this.serialPortManager.getWritablePort();   // 書き込みポートの準備
     this.terminalOutputCallback = callback;
     this.isPortBusy = false;
     this.isTerminalOutput = true;
     await this.getReadablePort();
     await this.processReaderData(false); // データを処理する関数を呼び出す
   }
-
-
-  // 書き込みポートを使用してデバイスにデータを書き込む
-  public writeDeive(chunk: string): void {
-    if (!this.isPortBusy) {
-        this.serialPortManager.picowrite(new TextEncoder().encode(chunk));
-    }
-  }
-
 
   /**
  * シリアルポートからデータを読み取り、処理する
@@ -106,7 +96,7 @@ private async processReaderData(
   }
 
   /**
- * ReadablePortを取得して、ターミナル出力を再開
+ * 通常のターミナル出力を再開
  */
   private async releaseTerminal(): Promise<void> {
     this.isPortBusy = false;
@@ -204,11 +194,12 @@ public async readFile(filename: string): Promise<Uint8Array> {
         await this.write('\x04'); // CTRL+D: コマンド終了
 
         // プロンプトを読み飛ばす
-        console.log('wait >OK....');
-        await this.waitForString('>OK'); // >OK を待つ
+        // console.log('wait >OK....');
+        await this.processReaderData('>OK'); // >OK を待つ
   
         // ファイル内容を取得（HEX形式で受信）
-        const hexContent = await this.waitForString('\x04'); // CTRL+D を待つ
+        this.isTerminalOutput = false;
+        const hexContent = await this.processReaderData('\x04'); // CTRL+D を待つ
         console.log('Received HEX content:', hexContent);
   
         // HEX形式をバイナリデータに変換
@@ -227,16 +218,6 @@ public async readFile(filename: string): Promise<Uint8Array> {
     return fileContent;
   }
   
-  /**
-   * Prepare the writable port.
-   * @return {WritableStreamDefaultWriter | null}
-   * The writer instance or null if not available.
-   */
-  private async getWritablePort() {
-    return this.serialPortManager.getWritablePort();
-  }
-
-
   /**
  * シリアルポートのリーダーを取得
  * @return {Promise<ReadableStreamDefaultReader>} - シリアルポートのリーダー
@@ -271,5 +252,12 @@ private async getReadablePort(): Promise<ReadableStreamDefaultReader> {
    */
   private async write(s: string) {
     await this.serialPortManager.picowrite(new TextEncoder().encode(s));
+  }
+
+  // 書き込みポートを使用してデバイスにデータを書き込む
+  public writeDeive(chunk: string): void {
+    if (!this.isPortBusy) {
+        this.write(chunk);
+    }
   }
 }

@@ -1,37 +1,6 @@
 import { SerialPortManager } from './SerialPortManager';
 
 
-/**
- * シリアルポートからデータを読み取るジェネレーター関数
- * @param {ReadableStreamDefaultReader} reader
- *  - シリアルポートのリーダー
- * @param {string | false} targetChar
- *  - 待機する特定の文字、またはチェックを無効にするためのfalse
- * @return {AsyncGenerator<string>}
- *  - データチャンクを文字列として返す非同期ジェネレーター
- */
-async function* readFromPort(
-    reader: ReadableStreamDefaultReader,
-    targetChar: string | false
-): AsyncGenerator<string> {
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const {value, done} = await reader.read();
-    if (done) {
-      return;
-    }
-
-    const chunk = decoder.decode(value, {stream: true});
-    yield chunk;
-
-    if (targetChar && chunk.includes(targetChar)) {
-      return;
-    }
-  }
-}
-
-
 export class DeviceCommunicator {
   private serialPortManager: SerialPortManager;
   private isPortBusy: boolean = false; // ポートの占有状態を管理
@@ -51,70 +20,98 @@ export class DeviceCommunicator {
     }
     this.isPortBusy = true;
 
-    if (this.isTerminalOutput) {
-        this.isTerminalOutput = false;
-        // ターミナル出力を停止する
-        try {
-          await this.releaseReadablePort();
-        } catch (error) {
-          console.error('Error releasing readable port:', error);  
+    // Read loop を抜ける
+    try {
+        // リーダーをキャンセル
+        if (this.serialPortManager.picoreader) {
+          await this.serialPortManager.picoreader.cancel();
+          console.log('Reader successfully canceled.');
+        } else {
+            console.error('No reader to cancel.');
         }
-    }
-    // 新しいターミナルを起動
-    await this.getReadablePort();
-    // await this.getWritablePort();
+        // リーダーを再作成
+        if (this.serialPortManager.picoport && this.serialPortManager.picoport.readable) {
+            this.serialPortManager.picoreader = this.serialPortManager.picoport.readable.getReader();
+        } else {
+            console.error('No picoport available.');
+        }
+      } catch (error) {
+        console.error('Error canceling the reader:', error);
+      }
+
   }
 
   /**
-   * ターミナル出力のコールバック関数を登録
+   * ターミナル出力を開始
    * @param {(chunk: string) => void} callback - ターミナル出力を処理するコールバック関数
    */
-  public startTerminalOutput(callback: (chunk: string) => void): void {
-    this.getWritablePort();
+  public async startTerminalOutput(callback: (chunk: string) => void): Promise<void> {
+    this.getWritablePort(); // 書き込みポートの準備
     this.terminalOutputCallback = callback;
-    this.resumeTerminalOutput(); // ターミナル出力を再開
+    this.isPortBusy = false;
+    this.isTerminalOutput = true;
+    await this.getReadablePort();
+    await this.processReaderData(false); // データを処理する関数を呼び出す
   }
 
+
+  // 書き込みポートを使用してデバイスにデータを書き込む
   public writeDeive(chunk: string): void {
     if (!this.isPortBusy) {
         this.serialPortManager.picowrite(new TextEncoder().encode(chunk));
     }
   }
-/**
- * ターミナル出力を再開
- */
-  private async resumeTerminalOutput(): Promise<void> {
-    this.isPortBusy = false;
-      if (!this.isTerminalOutput) {
-      console.log('Resuming terminal output...');
-      this.isTerminalOutput = true;
-      // this.releaseWritablePort();   // 書き込みポートを解放
 
-      // ターミナル出力を再開するロジック
-      const reader = await this.getReadablePort();
-      if (reader) {
-          try {
-          while (!this.isPortBusy) {
-            const { value, done } = await reader.read();
-            if (done || !value) break;
+
+  /**
+ * シリアルポートからデータを読み取り、処理する
+ * @param {ReadableStreamDefaultReader} reader - シリアルポートのリーダー
+ */
+private async processReaderData(
+    targetString: string | false,
+  ): Promise<string> {
+    let result = '';
+    try {
+      const reader = this.serialPortManager.picoreader;
+        if (!reader) {
+            throw new Error('Reader is not available.');
+        }
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done || !value) break;
   
-            const chunk = new TextDecoder().decode(value);
-            console.log('chunk:', chunk); // デバッグ用
+        const chunk = new TextDecoder().decode(value);
+        console.log('chunk:', chunk); // デバッグ用
   
-            // コールバック関数が登録されている場合は呼び出す
-            if (this.isTerminalOutput && this.terminalOutputCallback) {
-              this.terminalOutputCallback(chunk);
-            } else {
-              console.log('Terminal output:', chunk); // デフォルトの動作
-            }
-          }
-        } catch (error) {
-          console.error('Error resuming terminal output:', error);
-        } finally {
-          console.log('quit terminal');
+        // コールバック関数が登録されている場合は呼び出す
+        if (this.isTerminalOutput && this.terminalOutputCallback) {
+          this.terminalOutputCallback(chunk);
+        } else {
+          console.log('Terminal output:', chunk); // デフォルトの動作
+        }
+        result += chunk;
+        // 特定の文字列が含まれている場合、処理を終了
+        if (targetString && result.includes(targetString)) {
+          const [beforeTarget] = result.split(targetString);
+          result = beforeTarget;
+          break;
         }
       }
+    } catch (error) {
+      console.error('Error processing reader data:', error);
+    } finally {
+      console.log('quit terminal');
     }
+    return result;
+  }
+
+  /**
+ * ReadablePortを取得して、ターミナル出力を再開
+ */
+  private async releaseTerminal(): Promise<void> {
+    this.isPortBusy = false;
+    this.isTerminalOutput = true;
+    await this.processReaderData(false); // データを処理する関数を呼び出す
   }
   
 /**
@@ -125,45 +122,9 @@ export class DeviceCommunicator {
  */
   private async waitForString(
     targetString: string | false,
-    callback: ((chunk: string) => void) | null
   ): Promise<string> {
     let result = '';
-  
-    const reader = this.serialPortManager.picoreader;
-    console.log('reader:', reader); // デバッグ用
-    if (reader) {
-  
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done || !value) break;
-  
-          const chunk = new TextDecoder().decode(value);
-          console.log('chunk:', chunk); // デバッグ用
-          // コールバック関数が指定されている場合は実行
-          if (callback) {
-            callback(chunk);
-          }
-  
-          result += chunk;
-  
-          // 特定の文字列が含まれている場合、処理を終了
-          if (targetString && result.includes(targetString)) {
-            const [beforeTarget] = result.split(targetString);
-            result = beforeTarget;
-            break;
-          }
-        }
-      } catch (error) {
-        console.error('Error while waiting for string:', error);
-      } finally {
-        // リーダーのロックを解放
-        // reader.releaseLock();
-        console.log('waitForString exit');
-      }
-    } else {
-      console.error('No readable port available.');
-    }
+    result = await this.processReaderData(targetString); // データを処理する関数を呼び出す
     console.log('result:', result); // デバッグ用
     return result;
   }
@@ -183,7 +144,7 @@ export class DeviceCommunicator {
     } catch (error) {
       console.error('Error executing command:', error);
     } finally {
-      this.resumeTerminalOutput(); // ポートを解放
+      this.releaseTerminal(); // ポートを解放
     }
   }
 
@@ -198,7 +159,7 @@ export class DeviceCommunicator {
         } catch (error) {
           console.error('Error executing sendCommand:', error);
         } finally {
-          this.resumeTerminalOutput(); // ポートを解放
+          this.releaseTerminal(); // ポートを解放
         }
       }
     
@@ -219,7 +180,7 @@ export class DeviceCommunicator {
     } catch (error) {
       console.error('Error writing file:', error);
     } finally {
-      this.resumeTerminalOutput(); // ポートを解放
+      this.releaseTerminal(); // ポートを解放
     }
   }
 
@@ -244,10 +205,10 @@ public async readFile(filename: string): Promise<Uint8Array> {
 
         // プロンプトを読み飛ばす
         console.log('wait >OK....');
-        await this.waitForString('>OK', null); // >OK を待つ
+        await this.waitForString('>OK'); // >OK を待つ
   
         // ファイル内容を取得（HEX形式で受信）
-        const hexContent = await this.waitForString('\x04', null); // CTRL+D を待つ
+        const hexContent = await this.waitForString('\x04'); // CTRL+D を待つ
         console.log('Received HEX content:', hexContent);
   
         // HEX形式をバイナリデータに変換
@@ -260,8 +221,7 @@ public async readFile(filename: string): Promise<Uint8Array> {
       console.error('Error reading file:', error);
     } finally {
       // ポートを解放
-      this.resumeTerminalOutput();
-      console.log('resumeTerminalOutput');
+      this.releaseTerminal();
     }
     // ファイル内容を返す
     return fileContent;
@@ -276,14 +236,8 @@ public async readFile(filename: string): Promise<Uint8Array> {
     return this.serialPortManager.getWritablePort();
   }
 
-  /**
-   * Release the picowriter lock.
-   */
-  private releaseWritablePort() {
-    this.serialPortManager.releaseWritablePort();
-  }
 
-/**
+  /**
  * シリアルポートのリーダーを取得
  * @return {Promise<ReadableStreamDefaultReader>} - シリアルポートのリーダー
  * @throws {Error} - ポートが利用できない場合にエラーをスロー
@@ -303,48 +257,11 @@ private async getReadablePort(): Promise<ReadableStreamDefaultReader> {
       retries++;
     }
   
-    // 既存のリーダーを解放
-    if (this.serialPortManager.picoreader) {
-        console.log('Releasing existing reader...');
-        await this.releaseReadablePort();
-    }
-
     // 新しいリーダーを作成して保存
-    console.log('getReader...');
     const reader = this.serialPortManager.picoport.readable.getReader();
     this.serialPortManager.picoreader = reader;
     console.log('New reader created.');
     return reader;
-  }
-
-/**
- * シリアルポートのリーダーを解放
- * @return {Promise<void>} - 解放処理が完了したことを示すプロミス
- */
-private async releaseReadablePort(): Promise<void> {
-    if (this.serialPortManager.picoreader) {
-      try {
-        // リーダーをキャンセル
-        await this.serialPortManager.picoreader.cancel();
-        console.log('Reader successfully canceled.');
-      } catch (error) {
-        console.error('Error canceling the reader:', error);
-      }
-  
-      try {
-        // リーダーのロックを解放
-        this.serialPortManager.picoreader.releaseLock();
-        console.log('Reader lock successfully released.');
-      } catch (error) {
-        console.error('Error releasing reader lock:', error);
-      } finally {
-        // リーダーをリセット
-        this.serialPortManager.picoreader = undefined;
-        console.log('releaseReadablePort exit');
-      }
-    } else {
-      console.log('No reader to release.');
-    }
   }
 
   /**

@@ -64,7 +64,7 @@ export class SerialPortManager {
     if (this.picoreader) {
       await this.picoreader.cancel();
     }
-
+    this.picowriter?.releaseLock();
     if (localPort) {
       try {
         await localPort.close();

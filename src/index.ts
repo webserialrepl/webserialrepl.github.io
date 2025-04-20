@@ -174,8 +174,55 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 });
 
+
+/**
+ * ファイル一覧を <select> に表示
+ * @param {HTMLSelectElement} selectElement - ファイル選択用の <select> 要素
+ */
+async function populateFileSelect(selectElement: HTMLSelectElement): Promise<void> {
+  const files = await device.getPyFileList();
+  selectElement.innerHTML = ''; // 既存のオプションをクリア
+
+  if (files.length === 0) {
+    const option = document.createElement('option');
+    option.textContent = 'No .py files found';
+    option.disabled = true;
+    selectElement.appendChild(option);
+    return;
+  }
+
+  files.forEach((file) => {
+    const option = document.createElement('option');
+    option.value = file;
+    option.textContent = file;
+    selectElement.appendChild(option);
+  });
+}
+
+/**
+ * 選択されたファイルをエディタに読み込む
+ * @param {HTMLSelectElement} selectElement - ファイル選択用の <select> 要素
+ * @param {monaco.editor.IStandaloneCodeEditor} editor - Monaco Editor インスタンス
+ */
+async function loadSelectedFile(selectElement: HTMLSelectElement, editor: monaco.editor.IStandaloneCodeEditor): Promise<void> {
+  const selectedFile = selectElement.value;
+  if (!selectedFile) {
+    console.error('No file selected');
+    return;
+  }
+
+  try {
+    const fileContent = await device.readFile(selectedFile); // ファイルを読み込む
+    const text = new TextDecoder('utf-8').decode(fileContent); // Uint8Array を文字列に変換
+    editor.setValue(text); // エディタに内容を設定
+    console.log(`Loaded file: ${selectedFile}`);
+  } catch (error) {
+    console.error(`Error loading file ${selectedFile}:`, error);
+  }
+}
+
 // Monaco Editorの初期化
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const editor =
     monaco.editor.create(document.getElementById('editor') as HTMLElement, {
       value: '',
@@ -196,8 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Send Textボタンのクリックイベント
-  const saveFileButton =
-    document.getElementById('saveFileButton') as HTMLButtonElement;
+  const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
   saveFileButton.addEventListener('click', async () => {
     /**
      * 文字列をUint8Arrayに変換する関数
@@ -226,4 +272,21 @@ document.addEventListener('DOMContentLoaded', () => {
   stopButton.addEventListener('click', async ()=> {
     await device.sendCommand('\x03'); // CTRL+C
   });
+
+  const fileSelect = document.getElementById('fileSelect') as HTMLSelectElement;
+  // ファイル一覧を取得して <select> に表示
+  await populateFileSelect(fileSelect);
+
+  const loadFileButton2 = document.getElementById('loadFileButton2') as HTMLButtonElement;
+  // ファイル選択時にエディタに読み込む
+  loadFileButton2.addEventListener('click', async () => {
+    await loadSelectedFile(fileSelect, editor);
+  });
+
+  // ファイル一覧を更新するボタン
+  const refreshButton = document.getElementById('refreshFileList') as HTMLButtonElement;
+  refreshButton.addEventListener('click', async () => {
+    await populateFileSelect(fileSelect);
+  });
+
 });

@@ -3,6 +3,10 @@ export interface PortOption extends HTMLOptionElement {
 }
 
 export class SerialPortManager {
+  // イベント名を定義
+  static readonly EVENT_CONNECTED = 'serialport-connected';
+  static readonly EVENT_DISCONNECTED = 'serialport-disconnected';
+
   public portSelector: HTMLSelectElement | undefined = undefined;
   public connectButton: HTMLButtonElement | undefined = undefined;
   private portCounter = 1;
@@ -75,7 +79,7 @@ export class SerialPortManager {
     this.markDisconnected();
   }
 
-  markDisconnected(): void {
+  bbbbb_markDisconnected(): void {
     this.picoport = undefined;
     console.log('<DISCONNECTED>');
     if (this.portSelector) {
@@ -88,7 +92,7 @@ export class SerialPortManager {
     }
   }
 
-  markConnected(): void {
+  bbbbb_markConnected(): void {
     if (this.portSelector) {
       this.portSelector.disabled = true;
     }
@@ -96,6 +100,28 @@ export class SerialPortManager {
       this.connectButton.textContent = 'Disconnect';
       this.connectButton.classList.remove('button-default');
       this.connectButton.disabled = false;
+    }
+  }
+  markDisconnected(): void {
+    this.picoport = undefined;
+    console.log('<DISCONNECTED>');
+
+    // 接続解除イベントを発生
+    document.dispatchEvent(new CustomEvent(SerialPortManager.EVENT_DISCONNECTED));
+
+    if (this.portSelector) {
+      this.portSelector.disabled = false;
+    }
+  }
+
+  markConnected(): void {
+    console.log('<CONNECTED>');
+
+    // 接続イベントを発生
+    document.dispatchEvent(new CustomEvent(SerialPortManager.EVENT_CONNECTED));
+
+    if (this.portSelector) {
+      this.portSelector.disabled = true;
     }
   }
 
@@ -137,3 +163,23 @@ export class SerialPortManager {
     await this.picowriter?.write(data);
   }
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  const connectButton = document.getElementById('connect') as HTMLButtonElement;
+
+  // 初期状態
+  connectButton.disabled = false;
+
+  // 接続イベントのリスナー
+  document.addEventListener(SerialPortManager.EVENT_CONNECTED, () => {
+    connectButton.textContent = 'Disconnect';
+    connectButton.classList.remove('button-default');
+  });
+
+  // 接続解除イベントのリスナー
+  document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {
+    connectButton.textContent = 'Connect';
+    connectButton.classList.add('button-default');
+  });
+
+});

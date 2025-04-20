@@ -218,31 +218,42 @@ public async readFile(filename: string): Promise<Uint8Array> {
     return fileContent;
   }
   
-    /**
-     * デバイス上の .py ファイルの一覧を取得
-     * @return {Promise<string[]>} - ファイル名の配列
-     */
-    public async getPyFileList(): Promise<string[]> {
+/**
+ * デバイス上の .py ファイルの一覧を取得
+ * @return {Promise<string[]>} - ファイル名の配列
+ */
+public async getPyFileList(): Promise<string[]> {
     try {
-        await this.occupyTerminal();
-        // ファイルを読み取るコマンドを送信
-        await this.write('\x01'); // CTRL+A: raw モード
-        const command = 'import os; print(os.listdir())'; // ファイル一覧を取得するコマンド
-        await this.write(command);
-        await this.write('\x04'); // CTRL+D: コマンド終了
-        // console.log('wait >OK....');
-        await this.processReaderData('>OK'); // >OK を待つ
-        // ファイル内容を取得（HEX形式で受信）
-        this.isTerminalOutput = false;
-        const result = await this.processReaderData('\x04'); // CTRL+D を待つ
-        console.log('Received HEX content:', result);
-      const files = JSON.parse(result); // 結果をパース
-      return files.filter((file: string) => file.endsWith('.py')); // .py ファイルのみを返す
+      await this.occupyTerminal();
+  
+      // ファイルを読み取るコマンドを送信
+      await this.write('\x01'); // CTRL+A: raw モード
+      const command = 'import os; print(os.listdir())'; // ファイル一覧を取得するコマンド
+      await this.write(command);
+      await this.write('\x04'); // CTRL+D: コマンド終了
+  
+      // プロンプトを読み飛ばす
+      await this.processReaderData('>OK'); // >OK を待つ
+  
+      // ファイル内容を取得
+      this.isTerminalOutput = false;
+      const result = await this.processReaderData('\x04'); // CTRL+D を待つ
+      console.log('Received content:', result);
+      this.releaseTerminal(); // ポートを解放
+
+      // Python のリスト形式からファイル名を抽出
+      const files = result
+        .replace(/[\[\]'\s]/g, '') // 角括弧、シングルクォート、空白を削除
+        .split(',') // カンマで分割
+        .filter((file) => file.endsWith('.py')); // .py ファイルのみを抽出
+  
+      return files;
     } catch (error) {
       console.error('Error fetching file list:', error);
       return [];
     }
   }
+
 
   /**
  * シリアルポートのリーダーを取得

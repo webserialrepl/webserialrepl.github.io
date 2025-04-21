@@ -66,8 +66,9 @@ export class DeviceCommunicator {
         // バッファにデータを追加
         buffer += chunk;
 
-        // バッファの最後の部分をチェック
-        if (buffer.endsWith('>>>')) {
+        // バッファの最後の6文字をチェック
+        const lastSixChars = buffer.slice(-6); // バッファの最後の6文字を取得
+        if (lastSixChars.includes('>>>')) {
           console.log('!REPL prompt detected.');
           this.updateStatus('REPL'); // REPLモード
         } else {

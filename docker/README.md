@@ -34,6 +34,6 @@ DeviceCommunicator
 ReplTerminal
 このクラスは、REPL（Read-Eval-Print Loop）用のターミナルを表しています。
 
-TODO:ファイルの読み書きのチェック、ポートの一覧の不要なもの
+TODO:
+ポートの一覧の不要なもの
 favicon.ico の設定
-STOP RUN　ボタンのディゼーブル時の色を変更

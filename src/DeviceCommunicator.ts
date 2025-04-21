@@ -2,9 +2,10 @@ import { SerialPortManager } from './SerialPortManager';
 
 export class DeviceCommunicator {
   private serialPortManager: SerialPortManager;
-  private isPortBusy: boolean = false; // ポートの占有状態を管理
+  // private isPortBusy: boolean = false; // ポートの占有状態を管理
   private isTerminalOutput: boolean = false; // ターミナル出力の状態を管理
   private terminalOutputCallback: ((chunk: string) => void) | null = null; // ターミナル出力のコールバック関数
+  private leftoverData: string = ''; // 未処理のデータを保持
 
   // ステータス管理用プロパティ
   private replStatus: 'REPL' | 'RUNNING' = 'REPL';
@@ -28,39 +29,6 @@ export class DeviceCommunicator {
   }
 
   /**
-   * ターミナルへの出力ループを止めて、RAWモードにする
-   */
-  private async prepareForCommand(): Promise<void> {
-    console.log('prepareForCommand');
-    // REPLモードでない場合は、処理を中断
-    if (this.replStatus !== 'REPL') {
-      console.error('Not in REPL mode. Exiting...');
-      return;
-    }
-    this.isPortBusy = true;
-
-    // Read loop を抜ける
-    try {
-      // リーダーをキャンセル
-      if (this.serialPortManager.picoreader) {
-        await this.serialPortManager.picoreader.cancel();
-        console.log('Reader successfully canceled.');
-      } else {
-        console.error('No reader to cancel.');
-      }
-      // リーダーを再作成
-      if (this.serialPortManager.picoport && this.serialPortManager.picoport.readable) {
-        this.serialPortManager.picoreader = this.serialPortManager.picoport.readable.getReader();
-      } else {
-        console.error('No picoport available.');
-      }
-    } catch (error) {
-      console.error('Error canceling the reader:', error);
-    }
-    await this.write('\x01'); // CTRL+A: RAWモードに入る
-  }
-
-  /**
    * ターミナル出力を開始
    * @param {(chunk: string) => void} callback - ターミナル出力を処理するコールバック関数
    */
@@ -68,7 +36,7 @@ export class DeviceCommunicator {
     console.log('startTerminalOutput');
     this.serialPortManager.getWritablePort();   // 書き込みポートの準備
     this.terminalOutputCallback = callback;
-    this.isPortBusy = false;
+    // this.isPortBusy = false;
     this.isTerminalOutput = true;
     await this.getReadablePort();
     await this.processReaderData(false); // データを処理する関数を呼び出す
@@ -79,8 +47,10 @@ export class DeviceCommunicator {
    * @param {ReadableStreamDefaultReader} reader - シリアルポートのリーダー
    */
   private async processReaderData(targetString: string | false): Promise<string> {
-    let result = '';
+    let result = this.leftoverData; // 前回の未処理データを初期値として設定
+    this.leftoverData = ''; // 未処理データをリセット
     const maxResultSize = 10000; // targetString が false の時保存する最大サイズ
+
     try {
       const reader = this.serialPortManager.picoreader;
         if (!reader) {
@@ -106,7 +76,7 @@ export class DeviceCommunicator {
           const sanitizedChunk = chunk.replace(/[^\x20-\x7E\u3000-\u9FFF\uFF00-\uFFEF\r\n]/g, ''); 
           this.terminalOutputCallback(sanitizedChunk);
         } else {
-          // console.log('Terminal output:', chunk); // デフォルトの動作
+          console.log('Terminal output:', chunk); // デフォルトの動作
         }
         result += chunk;
 
@@ -118,8 +88,9 @@ export class DeviceCommunicator {
 
         // 特定の文字列が含まれている場合、処理を終了
         if (targetString && result.includes(targetString)) {
-          const [beforeTarget] = result.split(targetString);
+          const [beforeTarget, afterTarget] = result.split(targetString);
           result = beforeTarget;
+          this.leftoverData = afterTarget; // targetString の後のデータを保存
           break;
         }
       }
@@ -132,13 +103,72 @@ export class DeviceCommunicator {
   }
 
   /**
+   * シリアルポートのリーダーをリセット（キャンセルして再作成）
+   */
+  private async resetReader(): Promise<void> {
+    try {
+      // リーダーをキャンセル
+      if (this.serialPortManager.picoreader) {
+        await this.serialPortManager.picoreader.cancel();
+        console.log('Reader successfully canceled.');
+      } else {
+        console.error('No reader to cancel.');
+      }
+
+      // リーダーを再作成
+      if (this.serialPortManager.picoport && this.serialPortManager.picoport.readable) {
+        this.serialPortManager.picoreader = this.serialPortManager.picoport.readable.getReader();
+        console.log('New reader created.');
+      } else {
+        console.error('No picoport available.');
+      }
+    } catch (error) {
+      console.error('Error resetting the reader:', error);
+    }
+  }
+
+  /**
+   * ターミナルへの出力ループを止めて、RAWモードにする
+   */
+  private async prepareForCommand(): Promise<void> {
+    console.log('prepareForCommand');
+    // REPLモードでない場合は、処理を中断
+    if (this.replStatus !== 'REPL') {
+      console.error('Not in REPL mode. Exiting...');
+      return;
+    }
+
+    try {
+      // リーダーをリセット
+      await this.resetReader();
+
+      // RAWモードに入る
+      await this.write('\x01'); // CTRL+A
+    } catch (error) {
+      console.error('Error preparing for command:', error);
+    }
+  }
+
+  /**
+   * RAWモードに入る
+   */
+  private async enterRawMode(): Promise<void> {
+    if (this.replStatus !== 'REPL') {
+      console.error('Not in REPL mode. Exiting...');
+    }
+    console.log('Entering RAW mode...');
+    this.isTerminalOutput = false;
+    await this.write('\x01'); // CTRL+A
+  }
+
+  /**
    * RAWモードを抜けて、通常のターミナル出力を再開
    */
   private async exitRawMode(): Promise<void> {
-    this.isPortBusy = false;
+    // this.isPortBusy = false;
     this.isTerminalOutput = true;
     await this.write('\x02'); // CTRL+B: RAWモードを抜ける
-    await this.processReaderData(false); // データを処理する関数を呼び出す
+    // await this.processReaderData(false); // データを処理する関数を呼び出す
   }
 
   /**
@@ -148,13 +178,13 @@ export class DeviceCommunicator {
   public async executeCommand(command: string): Promise<void> {
     console.log('executeCommand:', command);
     try {
-        await this.prepareForCommand(); // CTRL+A
+        await this.enterRawMode(); // CTRL+A
         await this.write(command);
         await this.write('\x04'); // CTRL+D
     } catch (error) {
       console.error('Error executing command:', error);
     } finally {
-      this.exitRawMode(); // ポートを解放
+      await this.exitRawMode(); // ポートを解放
     }
   }
 
@@ -179,17 +209,45 @@ export class DeviceCommunicator {
   public async writeFile(filename: string, content: Uint8Array): Promise<void> {
     console.log('writeFile:', filename);
     try {
-      await this.prepareForCommand(); // CTRL+A
+      await this.enterRawMode(); // CTRL+A
       await this.write(`with open("${filename}", "wb") as f:\r`);
       const chunk = JSON.stringify(Array.from(content));
       await this.write(`  f.write(bytes(${chunk}))\r`);
       await this.write('\x04'); // CTRL+D
+
+      // 書き込み後に検証
+      console.log('Verifying written file...');
+      const writtenContent = await this.readFile(filename); // デバイス上のファイルを読み取る
+      if (!this.verifyContent(content, writtenContent)) {
+        throw new Error('File verification failed: Written content does not match.');
+      }
+      console.log('File verification succeeded.');
     } catch (error) {
-      console.error('Error writing file:', error);
+      const err = error as Error; // 型アサーション
+      console.error('Error writing file:', err.message);
+      throw new Error(`Failed to write file "${filename}": ${err.message}`);
     } finally {
-      this.exitRawMode(); // ポートを解放
+      await this.exitRawMode(); // ポートを解放
     }
   }
+
+/**
+ * 書き込んだ内容とデバイス上の内容を比較して検証
+ * @param {Uint8Array} originalContent - 書き込んだ内容
+ * @param {Uint8Array} writtenContent - デバイス上の内容
+ * @return {boolean} - 一致する場合は true、そうでない場合は false
+ */
+private verifyContent(originalContent: Uint8Array, writtenContent: Uint8Array): boolean {
+  if (originalContent.length !== writtenContent.length) {
+    return false;
+  }
+  for (let i = 0; i < originalContent.length; i++) {
+    if (originalContent[i] !== writtenContent[i]) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /**
  * MicroPython デバイスからファイルをバイナリ形式で読み取る
@@ -201,8 +259,9 @@ public async readFile(filename: string): Promise<Uint8Array> {
     let fileContent = new Uint8Array();
   
     try {
-      // ポートを占有
-      await this.prepareForCommand(); // CTRL+A
+      await this.resetReader();
+      await this.enterRawMode(); // CTRL+A
+
       await this.write(`with open("${filename}", "rb") as f:\r`);
       await this.write('  import ubinascii\r');
       await this.write('  print(ubinascii.hexlify(f.read()).decode())\r');
@@ -213,8 +272,9 @@ public async readFile(filename: string): Promise<Uint8Array> {
       await this.processReaderData('>OK'); // >OK を待つ
 
       // ファイル内容を取得（HEX形式で受信）
-      this.isTerminalOutput = false;
+      // this.isTerminalOutput = false;
       const hexContent = await this.processReaderData('\x04'); // CTRL+D を待つ
+      this.processReaderData(false); // データを処理する関数を呼び出す
       // console.log('Received HEX content:', hexContent);
 
       // HEX形式をバイナリデータに変換
@@ -227,7 +287,7 @@ public async readFile(filename: string): Promise<Uint8Array> {
       console.error('Error reading file:', error);
     } finally {
       // ポートを解放
-      this.exitRawMode();
+      await this.exitRawMode();
     }
     // ファイル内容を返す
     return fileContent;
@@ -240,19 +300,24 @@ public async readFile(filename: string): Promise<Uint8Array> {
 public async getPyFileList(): Promise<string[]> {
     console.log('getPyFileList');
     try {
-      await this.prepareForCommand(); // CTRL+A
-      const command = 'import os; print(os.listdir())'; // ファイル一覧を取得するコマンド
-      await this.write(command);
+      await this.resetReader();
+      await this.enterRawMode(); // CTRL+A
+
+      await this.write('import os\r');
+      await this.write('print(os.listdir())\r');
       await this.write('\x04'); // CTRL+D: コマンド終了
+      console.log('Command sent:');
   
       // プロンプトを読み飛ばす
-      await this.processReaderData('>OK'); // >OK を待つ
+      const skip = await this.processReaderData('>OK'); // >OK を待つ
+      console.log('Skip:', skip);
   
       // ファイル内容を取得
-      this.isTerminalOutput = false;
+      // this.isTerminalOutput = false;
       const result = await this.processReaderData('\x04'); // CTRL+D を待つ
+      this.processReaderData(false); // データを処理する関数を呼び出す
       console.log('Received content:', result);
-      this.exitRawMode(); // ポートを解放
+      await this.exitRawMode(); // ポートを解放
 
       // Python のリスト形式からファイル名を抽出
       const files = result
@@ -306,8 +371,9 @@ private async getReadablePort(): Promise<ReadableStreamDefaultReader> {
 
   // 書き込みポートを使用してデバイスにデータを書き込む
   public async writeDevice(chunk: string): Promise<void> {
-    if (!this.isPortBusy) {
-        this.write(chunk);
-    }
+    this.write(chunk);
+    // if (!this.isPortBusy) {
+    //     this.write(chunk);
+    // }
   }
 }

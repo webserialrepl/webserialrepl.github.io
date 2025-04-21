@@ -28,9 +28,12 @@ npm run dev
 SerialPortManager
 このクラスは、シリアルポートの選択や接続、切断を管理しています。
 
-旧：Pico
 DeviceCommunicator
 このクラスは、シリアルポートを介してデバイスと通信するためのロジックを提供しています。
 
 ReplTerminal
 このクラスは、REPL（Read-Eval-Print Loop）用のターミナルを表しています。
+
+TODO:ファイルの読み書きのチェック、ポートの一覧の不要なもの
+favicon.ico の設定
+STOP RUN　ボタンのディゼーブル時の色を変更

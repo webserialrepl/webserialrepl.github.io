@@ -14,7 +14,63 @@ export class SerialPortManager {
   public picoreader: ReadableStreamDefaultReader | undefined = undefined;
   private picowriter: WritableStreamDefaultWriter | null = null;
 
-  findPortOption(port: SerialPort): PortOption | null {
+  // 初期化処理をまとめたメソッド
+  public async initialize(): Promise<void> {
+    this.portSelector = document.getElementById('ports') as HTMLSelectElement;
+    this.connectButton = document.getElementById('connect') as HTMLButtonElement;
+
+    // 初期状態の設定
+    if (this.connectButton) {
+      this.connectButton.disabled = false;
+    }
+
+    // 接続イベントのリスナー
+    document.addEventListener(SerialPortManager.EVENT_CONNECTED, () => {
+      if (this.connectButton) {
+        this.connectButton.textContent = 'Disconnect';
+        this.connectButton.classList.remove('button-default');
+      }
+    });
+
+    // 接続解除イベントのリスナー
+    document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {
+      if (this.connectButton) {
+        this.connectButton.textContent = 'Connect';
+        this.connectButton.classList.add('button-default');
+      }
+    });
+
+    // 既存のポートを取得して追加
+    const ports: SerialPort[] = await navigator.serial.getPorts();
+    ports.forEach((port) => this.addNewPort(port));
+
+    // 接続ボタンのクリックイベント
+    if (this.connectButton) {
+      this.connectButton.addEventListener('click', async () => {
+        if (this.picoport) {
+          await this.disconnectFromPort();
+        } else {
+          await this.openpicoport(); // ポートを開く
+          // await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
+        }
+      });
+    }
+
+    // シリアルポートの接続・切断イベントのリスナー
+    navigator.serial.addEventListener('connect', (event) => {
+      const portOption = this.addNewPort(event.target as SerialPort);
+      portOption.selected = true;
+    });
+
+    navigator.serial.addEventListener('disconnect', (event) => {
+      const portOption = this.findPortOption(event.target as SerialPort);
+      if (portOption) {
+        portOption.remove();
+      }
+    });
+  }
+  
+  private findPortOption(port: SerialPort): PortOption | null {
     if (!this.portSelector) return null;
     for (let i = 0; i < this.portSelector.options.length; ++i) {
       const option = this.portSelector.options[i];
@@ -29,7 +85,7 @@ export class SerialPortManager {
     return null;
   }
 
-  addNewPort(port: SerialPort): PortOption {
+  private addNewPort(port: SerialPort): PortOption {
     const portOption = document.createElement('option') as PortOption;
     portOption.textContent = `Port ${this.portCounter++}`;
     portOption.port = port;
@@ -37,7 +93,7 @@ export class SerialPortManager {
     return portOption;
   }
 
-  maybeAddNewPort(port: SerialPort): PortOption {
+  private maybeAddNewPort(port: SerialPort): PortOption {
     const portOption = this.findPortOption(port);
     if (portOption) {
       return portOption;
@@ -45,7 +101,7 @@ export class SerialPortManager {
     return this.addNewPort(port);
   }
 
-  async getSelectedPort(): Promise<void> {
+  private async getSelectedPort(): Promise<void> {
     if (this.portSelector?.value == 'prompt') {
       try {
         const serial = navigator.serial;
@@ -61,7 +117,7 @@ export class SerialPortManager {
     }
   }
 
-  async disconnectFromPort(): Promise<void> {
+  private async disconnectFromPort(): Promise<void> {
     const localPort = this.picoport;
     this.picoport = undefined;
 
@@ -79,30 +135,8 @@ export class SerialPortManager {
     this.markDisconnected();
   }
 
-  bbbbb_markDisconnected(): void {
-    this.picoport = undefined;
-    console.log('<DISCONNECTED>');
-    if (this.portSelector) {
-      this.portSelector.disabled = false;
-    }
-    if (this.connectButton) {
-      this.connectButton.textContent = 'Connect';
-      this.connectButton.classList.add('button-default');
-      this.connectButton.disabled = false;
-    }
-  }
 
-  bbbbb_markConnected(): void {
-    if (this.portSelector) {
-      this.portSelector.disabled = true;
-    }
-    if (this.connectButton) {
-      this.connectButton.textContent = 'Disconnect';
-      this.connectButton.classList.remove('button-default');
-      this.connectButton.disabled = false;
-    }
-  }
-  markDisconnected(): void {
+  private markDisconnected(): void {
     this.picoport = undefined;
     console.log('<DISCONNECTED>');
 
@@ -114,7 +148,7 @@ export class SerialPortManager {
     }
   }
 
-  markConnected(): void {
+  private markConnected(): void {
     console.log('<CONNECTED>');
 
     // 接続イベントを発生
@@ -125,15 +159,20 @@ export class SerialPortManager {
     }
   }
 
-  async openpicoport(): Promise<void> {
+  private async openpicoport(): Promise<void> {
     await this.getSelectedPort();
     if (!this.picoport) {
+      console.error('No port selected');
       return;
     }
-    this.markConnected();
+    if (this.portSelector) {
+      this.portSelector.disabled = true;
+    }
     try {
       await this.picoport.open({ baudRate: 115200 });
       console.log('<CONNECTED>');
+      // 接続イベントを発生
+      document.dispatchEvent(new CustomEvent(SerialPortManager.EVENT_CONNECTED));
     } catch (e) {
       console.error(e);
       if (e instanceof Error) {
@@ -144,7 +183,7 @@ export class SerialPortManager {
     }
   }
 
-  getWritablePort(): WritableStreamDefaultWriter | null {
+  public getWritablePort(): WritableStreamDefaultWriter | null {
     if (this.picoport && this.picoport.writable) {
       this.picowriter = this.picoport.writable.getWriter();
     } else {
@@ -153,17 +192,18 @@ export class SerialPortManager {
     return this.picowriter;
   }
 
-  releaseWritablePort(): void {
+  private releaseWritablePort(): void {
     if (this.picowriter) {
       this.picowriter.releaseLock();
     }
   }
 
-  async picowrite(data: Uint8Array) {
+  public async picowrite(data: Uint8Array) {
     await this.picowriter?.write(data);
   }
 }
 
+/*
 document.addEventListener('DOMContentLoaded', () => {
   const connectButton = document.getElementById('connect') as HTMLButtonElement;
 
@@ -182,4 +222,32 @@ document.addEventListener('DOMContentLoaded', () => {
     connectButton.classList.add('button-default');
   });
 
+  serialPortManager.portSelector = document.getElementById('ports') as HTMLSelectElement;
+  serialPortManager.connectButton = document.getElementById('connect') as HTMLButtonElement;
+
+  const ports: (SerialPort)[] = await navigator.serial.getPorts();
+  ports.forEach((port) => serialPortManager.addNewPort(port));
+
+  serialPortManager.connectButton.addEventListener('click', async () => {
+    if (serialPortManager.picoport) {
+      serialPortManager.disconnectFromPort();
+    } else {
+      await serialPortManager.openpicoport(); // ポートを開く
+      await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
+    }
+  });
+
+  // These events are not supported by the polyfill.
+  // https://github.com/google/web-serial-polyfill/issues/20
+  navigator.serial.addEventListener('connect', (event) => {
+    const portOption = serialPortManager.addNewPort(event.target as SerialPort);
+    portOption.selected = true;
+  });
+  navigator.serial.addEventListener('disconnect', (event) => {
+    const portOption = serialPortManager.findPortOption(event.target as SerialPort);
+    if (portOption) {
+      portOption.remove();
+    }
+  });
 });
+*/

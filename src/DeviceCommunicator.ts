@@ -15,6 +15,7 @@ export class DeviceCommunicator {
    * リードポートのループを止めて、ポートを占有する
    */
   private async occupyTerminal(): Promise<void> {
+    console.log('occupyTerminal');
     if (this.isPortBusy) {
       throw new Error('Port is currently busy.');
     }
@@ -45,6 +46,7 @@ export class DeviceCommunicator {
    * @param {(chunk: string) => void} callback - ターミナル出力を処理するコールバック関数
    */
   public async startTerminalOutput(callback: (chunk: string) => void): Promise<void> {
+    console.log('startTerminalOutput');
     this.serialPortManager.getWritablePort();   // 書き込みポートの準備
     this.terminalOutputCallback = callback;
     this.isPortBusy = false;
@@ -125,6 +127,7 @@ private async processReaderData(
    * @param {string} command - 実行するコマンド
    */
   public async executeCommand(command: string): Promise<void> {
+    console.log('executeCommand:', command);
     try {
         await this.occupyTerminal(); // ポートを占有
 
@@ -143,6 +146,7 @@ private async processReaderData(
    * @param {string} command - 実行するコマンド
    */
     public async sendCommand(command: string): Promise<void> {
+        console.log('sendCommand:', command);
         try {
             await this.occupyTerminal(); // ポートを占有
             await this.write(command);
@@ -159,6 +163,7 @@ private async processReaderData(
    * @param {Uint8Array} content - 書き込む内容
    */
   public async writeFile(filename: string, content: Uint8Array): Promise<void> {
+    console.log('writeFile:', filename);
     try {
       await this.occupyTerminal(); // ポートを占有
   
@@ -180,6 +185,7 @@ private async processReaderData(
  * @return {Promise<Uint8Array>} - ファイルの内容をバイナリデータとして返す
  */
 public async readFile(filename: string): Promise<Uint8Array> {
+    console.log('readFile:', filename);
     let fileContent = new Uint8Array();
   
     try {
@@ -223,6 +229,7 @@ public async readFile(filename: string): Promise<Uint8Array> {
  * @return {Promise<string[]>} - ファイル名の配列
  */
 public async getPyFileList(): Promise<string[]> {
+    console.log('getPyFileList');
     try {
       await this.occupyTerminal();
   

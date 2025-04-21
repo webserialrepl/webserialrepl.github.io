@@ -142,6 +142,18 @@ document.addEventListener('DOMContentLoaded', async () => {
  * シリアルポートの選択肢を追加し、接続ボタンのイベントリスナーを設定する。
  */
 document.addEventListener('DOMContentLoaded', async () => {
+
+  // シリアルポートの初期化処理
+  await serialPortManager.initialize(); // 初期化処理を実行
+
+  // シリアルポート接続
+  document.addEventListener(SerialPortManager.EVENT_CONNECTED, async () => {
+    console.log('Connected to the serial port');
+    await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
+  });
+
+  // TODO:以下は不要
+  /*
   serialPortManager.portSelector =
     document.getElementById('ports') as HTMLSelectElement;
   serialPortManager.connectButton =
@@ -172,6 +184,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       portOption.remove();
     }
   });
+  */
 });
 
 
@@ -275,7 +288,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const fileSelect = document.getElementById('fileSelect') as HTMLSelectElement;
   // ファイル一覧を取得して <select> に表示
-  await populateFileSelect(fileSelect);
+  // await populateFileSelect(fileSelect);
 
   const loadFileButton2 = document.getElementById('loadFileButton2') as HTMLButtonElement;
   // ファイル選択時にエディタに読み込む

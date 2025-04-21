@@ -100,7 +100,7 @@ export class ReplTerminal extends Terminal {
     if (type === 'error') {
       this.write(`\x1b[31m${message}\x1b[0m\r\n`); // 赤色で出力
     } else {
-      this.write(`${message}\r\n`); // 通常の色で出力
+      this.write(`\x1b[32m${message}\x1b[0m\r\n`); // 緑色で出力
     }
   }
 }

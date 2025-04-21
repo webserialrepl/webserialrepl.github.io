@@ -210,7 +210,7 @@ export class DeviceCommunicator {
       console.error('Error writing file:', err.message);
       throw new Error(`Failed to write file "${filename}": ${err.message}`);
     } finally {
-      await this.exitRawMode(); // ポートを解放
+      //await this.exitRawMode(); // ポートを解放
     }
   }
 

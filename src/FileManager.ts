@@ -151,8 +151,10 @@ export class FileManager {
       }
 
       console.log(`Loaded file: ${selectedFile}`);
+      this.terminal.logToTerminal(`ファイル読込：${selectedFile}`, 'info'); // 成功メッセージを出力
     } catch (error) {
       console.error(`Error loading file ${selectedFile}:`, error);
+      this.terminal.logToTerminal(`ファイル読込失敗："${this.selectedFile}": ${error}`); // エラーメッセージを出力
     }
   }
 

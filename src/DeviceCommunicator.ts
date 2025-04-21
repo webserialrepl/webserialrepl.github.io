@@ -80,6 +80,7 @@ export class DeviceCommunicator {
    */
   private async processReaderData(targetString: string | false): Promise<string> {
     let result = '';
+    const maxResultSize = 10000; // 保存する最大サイズ（例: 10,000文字）
     try {
       const reader = this.serialPortManager.picoreader;
         if (!reader) {
@@ -90,15 +91,7 @@ export class DeviceCommunicator {
         if (done || !value) break;
 
         const chunk = new TextDecoder('utf-8').decode(value);
-        console.log('chunk:', chunk); // デバッグ用
-        // コントロールコードを検出してダンプを出力
-        if (/[\x00-\x1F\x7F]/.test(chunk)) { // 制御文字を検出
-          const hexDump = Array.from(value as Uint8Array)
-            .map((byte) => byte.toString(16).padStart(2, '0'))
-            .join(' ');
-          console.log('Control characters detected. Hex dump:', hexDump);
-        }
-
+        // console.log('chunk:', chunk); // デバッグ用
 
         // ステータスを更新
         if (chunk.includes('>>>')) {
@@ -109,11 +102,20 @@ export class DeviceCommunicator {
 
         // コールバック関数が登録されている場合は呼び出す
         if (this.isTerminalOutput && this.terminalOutputCallback) {
-          this.terminalOutputCallback(chunk);
+          // ASCIIの表示可能な範囲 (0x20-0x7E)、日本語 (Unicode範囲)、改行 (\r, \n) を許可
+          const sanitizedChunk = chunk.replace(/[^\x20-\x7E\u3000-\u9FFF\uFF00-\uFFEF\r\n]/g, ''); 
+          this.terminalOutputCallback(sanitizedChunk);
         } else {
           console.log('Terminal output:', chunk); // デフォルトの動作
         }
         result += chunk;
+
+        // `result` のサイズを制限
+        if (result.length > maxResultSize) {
+          result = result.slice(result.length - maxResultSize); // 古いデータを削除
+          console.error('Result size exceeded maximum limit. Trimming...');
+        }
+
         // 特定の文字列が含まれている場合、処理を終了
         if (targetString && result.includes(targetString)) {
           const [beforeTarget] = result.split(targetString);

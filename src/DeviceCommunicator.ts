@@ -47,7 +47,7 @@ export class DeviceCommunicator {
    * @param {ReadableStreamDefaultReader} reader - シリアルポートのリーダー
    */
   private async processReaderData(targetString: string | false): Promise<string> {
-    let result = this.leftoverData; // 前回の未処理データを初期値として設定
+    let buffer = this.leftoverData; // 前回の未処理データを初期値として設定
     this.leftoverData = ''; // 未処理データをリセット
     const maxResultSize = 10000; // targetString が false の時保存する最大サイズ
 
@@ -61,12 +61,17 @@ export class DeviceCommunicator {
         if (done || !value) break;
 
         const chunk = new TextDecoder('utf-8').decode(value);
-        // console.log('chunk:', chunk); // デバッグ用
+        console.log('chunk:', chunk); // デバッグ用
 
-        // ステータスを更新
-        if (chunk.includes('>>>')) {
+        // バッファにデータを追加
+        buffer += chunk;
+
+        // バッファの最後の部分をチェック
+        if (buffer.endsWith('>>>')) {
+          console.log('!REPL prompt detected.');
           this.updateStatus('REPL'); // REPLモード
         } else {
+          console.log('!REPL prompt NOT detected.');
           this.updateStatus('RUNNING'); // プログラム実行中
         }
 
@@ -76,20 +81,19 @@ export class DeviceCommunicator {
           const sanitizedChunk = chunk.replace(/[^\x20-\x7E\u3000-\u9FFF\uFF00-\uFFEF\r\n]/g, ''); 
           this.terminalOutputCallback(sanitizedChunk);
         } else {
-          console.log('Terminal output:', chunk); // デフォルトの動作
+          // console.log('Terminal output:', chunk); // デフォルトの動作
         }
-        result += chunk;
 
         // `result` のサイズを制限
-        if (!targetString && result.length > maxResultSize) {
-          result = result.slice(result.length - maxResultSize); // 古いデータを削除
+        if (!targetString && buffer.length > maxResultSize) {
+          buffer = buffer.slice(buffer.length - maxResultSize); // 古いデータを削除
           console.error('Result size exceeded maximum limit. Trimming...');
         }
 
         // 特定の文字列が含まれている場合、処理を終了
-        if (targetString && result.includes(targetString)) {
-          const [beforeTarget, afterTarget] = result.split(targetString);
-          result = beforeTarget;
+        if (targetString && buffer.includes(targetString)) {
+          const [beforeTarget, afterTarget] = buffer.split(targetString);
+          buffer = beforeTarget;
           this.leftoverData = afterTarget; // targetString の後のデータを保存
           break;
         }
@@ -99,7 +103,7 @@ export class DeviceCommunicator {
     } finally {
       // console.log('quit terminal');
     }
-    return result;
+    return buffer;
   }
 
   /**

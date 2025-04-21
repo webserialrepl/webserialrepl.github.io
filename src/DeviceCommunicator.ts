@@ -80,7 +80,7 @@ export class DeviceCommunicator {
    */
   private async processReaderData(targetString: string | false): Promise<string> {
     let result = '';
-    const maxResultSize = 10000; // 保存する最大サイズ（例: 10,000文字）
+    const maxResultSize = 10000; // targetString が false の時保存する最大サイズ
     try {
       const reader = this.serialPortManager.picoreader;
         if (!reader) {
@@ -106,12 +106,12 @@ export class DeviceCommunicator {
           const sanitizedChunk = chunk.replace(/[^\x20-\x7E\u3000-\u9FFF\uFF00-\uFFEF\r\n]/g, ''); 
           this.terminalOutputCallback(sanitizedChunk);
         } else {
-          console.log('Terminal output:', chunk); // デフォルトの動作
+          // console.log('Terminal output:', chunk); // デフォルトの動作
         }
         result += chunk;
 
         // `result` のサイズを制限
-        if (result.length > maxResultSize) {
+        if (!targetString && result.length > maxResultSize) {
           result = result.slice(result.length - maxResultSize); // 古いデータを削除
           console.error('Result size exceeded maximum limit. Trimming...');
         }
@@ -126,7 +126,7 @@ export class DeviceCommunicator {
     } catch (error) {
       console.error('Error processing reader data:', error);
     } finally {
-      console.log('quit terminal');
+      // console.log('quit terminal');
     }
     return result;
   }
@@ -215,7 +215,7 @@ public async readFile(filename: string): Promise<Uint8Array> {
       // ファイル内容を取得（HEX形式で受信）
       this.isTerminalOutput = false;
       const hexContent = await this.processReaderData('\x04'); // CTRL+D を待つ
-      console.log('Received HEX content:', hexContent);
+      // console.log('Received HEX content:', hexContent);
 
       // HEX形式をバイナリデータに変換
       const binaryData = new Uint8Array(

@@ -47,6 +47,7 @@ export class ReplTerminal extends Terminal {
 
     // ターミナルを DOM に接続
     if (terminalElement) {
+      terminalElement.style.height = '170px'; // 必要な高さに調整
       this.open(terminalElement);
       this.fitAddon.fit();
     }

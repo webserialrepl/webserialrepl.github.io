@@ -59,7 +59,9 @@ const device = new DeviceCommunicator(serialPortManager);
 // ReplTerminal クラスのインスタンスを作成。
 // スクロールバックバッファを 10,000 行に設定。
 const repl_terminal = new ReplTerminal(
-  { scrollback: 10_000 }, // ターミナルのオプション
+  {
+    scrollback: 1000, // スクロールバックバッファを1000行に制限
+  }, // ターミナルのオプション
   new FitAddon(), // FitAddon インスタンス
   device, // DeviceCommunicator インスタンス
 );

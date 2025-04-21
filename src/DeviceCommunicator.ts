@@ -133,28 +133,6 @@ export class DeviceCommunicator {
   }
 
   /**
-   * ターミナルへの出力ループを止めて、RAWモードにする
-   */
-  private async prepareForCommand(): Promise<void> {
-    console.log('prepareForCommand');
-    // REPLモードでない場合は、処理を中断
-    if (this.replStatus !== 'REPL') {
-      console.error('Not in REPL mode. Exiting...');
-      return;
-    }
-
-    try {
-      // リーダーをリセット
-      await this.resetReader();
-
-      // RAWモードに入る
-      await this.write('\x01'); // CTRL+A
-    } catch (error) {
-      console.error('Error preparing for command:', error);
-    }
-  }
-
-  /**
    * RAWモードに入る
    */
   private async enterRawMode(): Promise<void> {

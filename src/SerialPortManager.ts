@@ -7,8 +7,8 @@ export class SerialPortManager {
   static readonly EVENT_CONNECTED = 'serialport-connected';
   static readonly EVENT_DISCONNECTED = 'serialport-disconnected';
 
-  public portSelector: HTMLSelectElement | undefined = undefined;
-  public connectButton: HTMLButtonElement | undefined = undefined;
+  private portSelector: HTMLSelectElement | undefined = undefined;
+  private connectButton: HTMLButtonElement | undefined = undefined;
   private portCounter = 1;
   public picoport: SerialPort | undefined;
   public picoreader: ReadableStreamDefaultReader | undefined = undefined;

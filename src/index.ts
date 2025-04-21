@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // FileManager のインスタンスを作成
-  const fileManager = new FileManager(device, editor);
+  const fileManager = new FileManager(device, editor, repl_terminal);
 
   // FileManager の初期化処理を実行
   await fileManager.initialize();

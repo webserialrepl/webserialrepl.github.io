@@ -91,4 +91,16 @@ export class ReplTerminal extends Terminal {
     fauxLink.click();
   }
 
+  /**
+   * ターミナルにメッセージを出力
+   * @param {string} message - 出力するメッセージ
+   * @param {'info' | 'error'} type - メッセージの種類 ('info' または 'error')
+   */
+  public logToTerminal(message: string, type: 'info' | 'error' = 'info'): void {
+    if (type === 'error') {
+      this.write(`\x1b[31m${message}\x1b[0m\r\n`); // 赤色で出力
+    } else {
+      this.write(`${message}\r\n`); // 通常の色で出力
+    }
+  }
 }

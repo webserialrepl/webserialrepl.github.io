@@ -1,14 +1,21 @@
 import { DeviceCommunicator } from './DeviceCommunicator';
 import * as monaco from 'monaco-editor';
+import { ReplTerminal } from './ReplTerminal';
 
 export class FileManager {
   private device: DeviceCommunicator;
   private editor: monaco.editor.IStandaloneCodeEditor;
+  private terminal: ReplTerminal; // ReplTerminal のインスタンスを保持
   private selectedFile: string | null = null; // 選択されたファイル名を保持
 
-  constructor(device: DeviceCommunicator, editor: monaco.editor.IStandaloneCodeEditor) {
+  constructor(
+    device: DeviceCommunicator,
+    editor: monaco.editor.IStandaloneCodeEditor,
+    terminal: ReplTerminal // ReplTerminal を受け取る
+  ) {
     this.device = device;
     this.editor = editor;
+    this.terminal = terminal; // インスタンスを保存
   }
 
   /**
@@ -163,6 +170,7 @@ export class FileManager {
     try {
       await this.device.writeFile(this.selectedFile, binaryData); // 選択されたファイルに保存
       console.log(`File saved: ${this.selectedFile}`);
+      this.terminal.logToTerminal(`File saved successfully: ${this.selectedFile}`, 'info'); // 成功メッセージを出力
 
       // アスタリスクを削除
       const loadedFileButton = document.getElementById('loadedfile') as HTMLButtonElement;
@@ -171,8 +179,10 @@ export class FileManager {
       }
 
     } catch (error) {
-      console.error(`Error saving file ${this.selectedFile}:`, error);
-    }
+      const err = error as Error;
+      console.error(`Error saving file ${this.selectedFile}:`, err);
+      this.terminal.logToTerminal(`Error saving file "${this.selectedFile}": ${err.message}`, 'error'); // エラーメッセージを出力
+      }
   }
 
   /**

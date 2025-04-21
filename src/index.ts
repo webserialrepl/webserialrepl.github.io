@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// import { Terminal, ITerminalOptions } from 'xterm';
+import { FileManager } from './FileManager';
 import { ReplTerminal } from './ReplTerminal';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
@@ -38,6 +38,20 @@ self.MonacoEnvironment = {
   },
 };
 
+// Build番号の表示
+document.addEventListener('DOMContentLoaded', () => {
+  const buildInfo = document.createElement('div');
+  buildInfo.textContent = `Build Number: ${__BUILD_NUMBER__}`;
+  buildInfo.style.position = 'absolute';
+  buildInfo.style.bottom = '10px';
+  buildInfo.style.right = '10px';
+  buildInfo.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+  buildInfo.style.color = 'white';
+  buildInfo.style.padding = '5px 10px';
+  buildInfo.style.borderRadius = '5px';
+  document.body.appendChild(buildInfo);
+});
+
 // SerialPortManager と DeviceCommunicator のインスタンスを作成
 const serialPortManager = new SerialPortManager();
 const device = new DeviceCommunicator(serialPortManager);
@@ -57,6 +71,29 @@ async function repl_terminal_write(chunk: string): Promise<void> {
   });
 }
 
+/**
+ * DOMContentLoaded イベントが発火した際に実行される関数。
+ * ターミナルの初期化、リサイズ対応、ダウンロードボタンやクリアボタンの
+ * イベントリスナーを設定する。
+ */
+document.addEventListener('DOMContentLoaded', async () => {
+
+  // ターミナルの初期化
+  await repl_terminal.initialize(); // 初期化処理を実行
+
+  // シリアルポートの初期化処理
+  await serialPortManager.initialize(); // 初期化処理を実行
+
+  // シリアルポート接続（接続時にターミナルが使えるようにする）
+  document.addEventListener(SerialPortManager.EVENT_CONNECTED, async () => {
+    console.log('Connected to the serial port');
+    await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
+  });
+
+});
+
+
+/*
 // temp.pyを読み込む関数
 async function loadTempPy(editor: monaco.editor.IStandaloneCodeEditor) {
   console.log('loadTempPy...');
@@ -73,125 +110,7 @@ async function loadTempPy(editor: monaco.editor.IStandaloneCodeEditor) {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const buildInfo = document.createElement('div');
-  buildInfo.textContent = `Build Number: ${__BUILD_NUMBER__}`;
-  buildInfo.style.position = 'absolute';
-  buildInfo.style.bottom = '10px';
-  buildInfo.style.right = '10px';
-  buildInfo.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-  buildInfo.style.color = 'white';
-  buildInfo.style.padding = '5px 10px';
-  buildInfo.style.borderRadius = '5px';
-  document.body.appendChild(buildInfo);
-});
 
-/**
- * DOMContentLoaded イベントが発火した際に実行される関数。
- * ターミナルの初期化、リサイズ対応、ダウンロードボタンやクリアボタンの
- * イベントリスナーを設定する。
- */
-document.addEventListener('DOMContentLoaded', async () => {
-  const terminalElement = document.getElementById('terminal');
-  if (terminalElement) {
-    repl_terminal.open(terminalElement);
-    repl_terminal.fitAddon.fit();
-
-    window.addEventListener('resize', () => {
-      repl_terminal.fitAddon.fit();
-    });
-  }
-
-  /**
-   * Download the terminal's contents to a file.
-   */
-  function downloadTerminalContents(): void {
-    if (!repl_terminal) {
-      throw new Error('no terminal instance found');
-    }
-
-    if (repl_terminal.rows === 0) {
-      console.log('No output yet');
-      return;
-    }
-
-    repl_terminal.selectAll();
-    const contents = repl_terminal.getSelection();
-    repl_terminal.clearSelection();
-    const linkContent = URL.createObjectURL(
-      new Blob([contents], { type: 'text/plain' })
-    );
-    const fauxLink = document.createElement('a');
-    fauxLink.download = `terminal_content_${new Date().getTime()}.txt`;
-    fauxLink.href = linkContent;
-    fauxLink.click();
-  }
-
-  const downloadOutput =
-    document.getElementById('download') as HTMLSelectElement;
-  downloadOutput.addEventListener('click', downloadTerminalContents);
-
-  const clearOutput = document.getElementById('clear') as HTMLSelectElement;
-  clearOutput.addEventListener('click', ()=>{
-    repl_terminal.clear();
-  });
-});
-
-/**
- * DOMContentLoaded イベントが発火した際に実行される関数。
- * シリアルポートの選択肢を追加し、接続ボタンのイベントリスナーを設定する。
- */
-document.addEventListener('DOMContentLoaded', async () => {
-
-  // シリアルポートの初期化処理
-  await serialPortManager.initialize(); // 初期化処理を実行
-
-  // シリアルポート接続
-  document.addEventListener(SerialPortManager.EVENT_CONNECTED, async () => {
-    console.log('Connected to the serial port');
-    await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
-  });
-
-  // TODO:以下は不要
-  /*
-  serialPortManager.portSelector =
-    document.getElementById('ports') as HTMLSelectElement;
-  serialPortManager.connectButton =
-    document.getElementById('connect') as HTMLButtonElement;
-
-
-  const ports: (SerialPort)[] = await navigator.serial.getPorts();
-  ports.forEach((port) => serialPortManager.addNewPort(port));
-
-  serialPortManager.connectButton.addEventListener('click', async () => {
-    if (serialPortManager.picoport) {
-      serialPortManager.disconnectFromPort();
-    } else {
-      await serialPortManager.openpicoport(); // ポートを開く
-      await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
-    }
-  });
-
-  // These events are not supported by the polyfill.
-  // https://github.com/google/web-serial-polyfill/issues/20
-  navigator.serial.addEventListener('connect', (event) => {
-    const portOption = serialPortManager.addNewPort(event.target as SerialPort);
-    portOption.selected = true;
-  });
-  navigator.serial.addEventListener('disconnect', (event) => {
-    const portOption = serialPortManager.findPortOption(event.target as SerialPort);
-    if (portOption) {
-      portOption.remove();
-    }
-  });
-  */
-});
-
-
-/**
- * ファイル一覧を <select> に表示
- * @param {HTMLSelectElement} selectElement - ファイル選択用の <select> 要素
- */
 async function populateFileSelect(selectElement: HTMLSelectElement): Promise<void> {
   const files = await device.getPyFileList();
   selectElement.innerHTML = ''; // 既存のオプションをクリア
@@ -212,11 +131,7 @@ async function populateFileSelect(selectElement: HTMLSelectElement): Promise<voi
   });
 }
 
-/**
- * 選択されたファイルをエディタに読み込む
- * @param {HTMLSelectElement} selectElement - ファイル選択用の <select> 要素
- * @param {monaco.editor.IStandaloneCodeEditor} editor - Monaco Editor インスタンス
- */
+
 async function loadSelectedFile(selectElement: HTMLSelectElement, editor: monaco.editor.IStandaloneCodeEditor): Promise<void> {
   const selectedFile = selectElement.value;
   if (!selectedFile) {
@@ -233,6 +148,45 @@ async function loadSelectedFile(selectElement: HTMLSelectElement, editor: monaco
     console.error(`Error loading file ${selectedFile}:`, error);
   }
 }
+*/
+
+// Monaco Editor の初期化
+document.addEventListener('DOMContentLoaded', async () => {
+  const editor = monaco.editor.create(document.getElementById('editor') as HTMLElement, {
+    value: '',
+    language: 'python',
+    theme: 'vs-dark',
+  });
+  // 改行コードを LF に設定
+  const model = editor.getModel();
+  if (model) {
+    model.setEOL(monaco.editor.EndOfLineSequence.LF);
+  }
+
+  // FileManager のインスタンスを作成
+  const fileManager = new FileManager(device, editor);
+
+  // FileManager の初期化処理を実行
+  await fileManager.initialize();
+
+  // run Code ボタンのクリックイベント
+  const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
+  runCodeButton.addEventListener('click', async () => {
+    // CTRL+A, コード, CTRL+D, CTRL+B
+    const text = '\x01' + editor.getValue() + '\x04\x02';
+    await device.sendCommand(text); // エディタの内容を実行
+  });
+
+  // STOPボタン：CTRL-C を送信
+  const stopButton = document.getElementById('stopButton') as HTMLButtonElement;
+  stopButton.addEventListener('click', async ()=> {
+    await device.sendCommand('\x03'); // CTRL+C
+  });
+
+
+});
+
+/*
 
 // Monaco Editorの初期化
 document.addEventListener('DOMContentLoaded', async () => {
@@ -258,11 +212,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Send Textボタンのクリックイベント
   const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
   saveFileButton.addEventListener('click', async () => {
-    /**
-     * 文字列をUint8Arrayに変換する関数
-     * @param {string} str - 変換する文字列
-     * @return {Uint8Array} - 変換されたUint8Array
-     */
     function stringToUint8Array(str: string): Uint8Array {
       const encoder = new TextEncoder();
       return encoder.encode(str);
@@ -303,3 +252,5 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
 });
+
+*/

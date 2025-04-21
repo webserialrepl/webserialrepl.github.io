@@ -1,6 +1,5 @@
 import { SerialPortManager } from './SerialPortManager';
 
-
 export class DeviceCommunicator {
   private serialPortManager: SerialPortManager;
   private isPortBusy: boolean = false; // ポートの占有状態を管理
@@ -23,22 +22,22 @@ export class DeviceCommunicator {
 
     // Read loop を抜ける
     try {
-        // リーダーをキャンセル
-        if (this.serialPortManager.picoreader) {
-          await this.serialPortManager.picoreader.cancel();
-          console.log('Reader successfully canceled.');
-        } else {
-            console.error('No reader to cancel.');
-        }
-        // リーダーを再作成
-        if (this.serialPortManager.picoport && this.serialPortManager.picoport.readable) {
-            this.serialPortManager.picoreader = this.serialPortManager.picoport.readable.getReader();
-        } else {
-            console.error('No picoport available.');
-        }
-      } catch (error) {
-        console.error('Error canceling the reader:', error);
+      // リーダーをキャンセル
+      if (this.serialPortManager.picoreader) {
+        await this.serialPortManager.picoreader.cancel();
+        console.log('Reader successfully canceled.');
+      } else {
+        console.error('No reader to cancel.');
       }
+      // リーダーを再作成
+      if (this.serialPortManager.picoport && this.serialPortManager.picoport.readable) {
+        this.serialPortManager.picoreader = this.serialPortManager.picoport.readable.getReader();
+      } else {
+        console.error('No picoport available.');
+      }
+    } catch (error) {
+      console.error('Error canceling the reader:', error);
+    }
   }
 
   /**
@@ -56,12 +55,10 @@ export class DeviceCommunicator {
   }
 
   /**
- * シリアルポートからデータを読み取り、処理する
- * @param {ReadableStreamDefaultReader} reader - シリアルポートのリーダー
- */
-private async processReaderData(
-    targetString: string | false,
-  ): Promise<string> {
+   * シリアルポートからデータを読み取り、処理する
+   * @param {ReadableStreamDefaultReader} reader - シリアルポートのリーダー
+   */
+  private async processReaderData(targetString: string | false): Promise<string> {
     let result = '';
     try {
       const reader = this.serialPortManager.picoreader;
@@ -71,10 +68,10 @@ private async processReaderData(
       while (true) {
         const { value, done } = await reader.read();
         if (done || !value) break;
-  
+
         const chunk = new TextDecoder().decode(value);
         console.log('chunk:', chunk); // デバッグ用
-  
+
         // コールバック関数が登録されている場合は呼び出す
         if (this.isTerminalOutput && this.terminalOutputCallback) {
           this.terminalOutputCallback(chunk);
@@ -98,29 +95,13 @@ private async processReaderData(
   }
 
   /**
- * 通常のターミナル出力を再開
- */
+   * 通常のターミナル出力を再開
+   */
   private async releaseTerminal(): Promise<void> {
     this.isPortBusy = false;
     this.isTerminalOutput = true;
     await this.processReaderData(false); // データを処理する関数を呼び出す
   }
-  
-/**
- * シリアルポートから特定の文字列を待つ
- * @param {string | false} targetString - 待機する特定の文字列、またはチェックを無効にするためのfalse
- * @param {(chunk: string) => void} callback - データチャンクを処理するコールバック関数
- * @return {Promise<string>} - 受信した文字列を返すプロミス
- */
-  private async waitForString(
-    targetString: string | false,
-  ): Promise<string> {
-    let result = '';
-    result = await this.processReaderData(targetString); // データを処理する関数を呼び出す
-    console.log('result:', result); // デバッグ用
-    return result;
-  }
-
 
   /**
    * コマンドを実行する
@@ -299,7 +280,7 @@ private async getReadablePort(): Promise<ReadableStreamDefaultReader> {
   }
 
   // 書き込みポートを使用してデバイスにデータを書き込む
-  public writeDeive(chunk: string): void {
+  public async writeDevice(chunk: string): Promise<void> {
     if (!this.isPortBusy) {
         this.write(chunk);
     }

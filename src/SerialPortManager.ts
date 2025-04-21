@@ -148,17 +148,6 @@ export class SerialPortManager {
     }
   }
 
-  private markConnected(): void {
-    console.log('<CONNECTED>');
-
-    // 接続イベントを発生
-    document.dispatchEvent(new CustomEvent(SerialPortManager.EVENT_CONNECTED));
-
-    if (this.portSelector) {
-      this.portSelector.disabled = true;
-    }
-  }
-
   private async openpicoport(): Promise<void> {
     await this.getSelectedPort();
     if (!this.picoport) {
@@ -192,62 +181,7 @@ export class SerialPortManager {
     return this.picowriter;
   }
 
-  private releaseWritablePort(): void {
-    if (this.picowriter) {
-      this.picowriter.releaseLock();
-    }
-  }
-
   public async picowrite(data: Uint8Array) {
     await this.picowriter?.write(data);
   }
 }
-
-/*
-document.addEventListener('DOMContentLoaded', () => {
-  const connectButton = document.getElementById('connect') as HTMLButtonElement;
-
-  // 初期状態
-  connectButton.disabled = false;
-
-  // 接続イベントのリスナー
-  document.addEventListener(SerialPortManager.EVENT_CONNECTED, () => {
-    connectButton.textContent = 'Disconnect';
-    connectButton.classList.remove('button-default');
-  });
-
-  // 接続解除イベントのリスナー
-  document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {
-    connectButton.textContent = 'Connect';
-    connectButton.classList.add('button-default');
-  });
-
-  serialPortManager.portSelector = document.getElementById('ports') as HTMLSelectElement;
-  serialPortManager.connectButton = document.getElementById('connect') as HTMLButtonElement;
-
-  const ports: (SerialPort)[] = await navigator.serial.getPorts();
-  ports.forEach((port) => serialPortManager.addNewPort(port));
-
-  serialPortManager.connectButton.addEventListener('click', async () => {
-    if (serialPortManager.picoport) {
-      serialPortManager.disconnectFromPort();
-    } else {
-      await serialPortManager.openpicoport(); // ポートを開く
-      await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
-    }
-  });
-
-  // These events are not supported by the polyfill.
-  // https://github.com/google/web-serial-polyfill/issues/20
-  navigator.serial.addEventListener('connect', (event) => {
-    const portOption = serialPortManager.addNewPort(event.target as SerialPort);
-    portOption.selected = true;
-  });
-  navigator.serial.addEventListener('disconnect', (event) => {
-    const portOption = serialPortManager.findPortOption(event.target as SerialPort);
-    if (portOption) {
-      portOption.remove();
-    }
-  });
-});
-*/

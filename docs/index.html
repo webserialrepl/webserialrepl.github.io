@@ -46,8 +46,8 @@
     }
   </style>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.28.1/min/vs/editor/editor.main.min.css">
-  <script type="module" crossorigin src="./assets/index.7ff858d8.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/monaco-editor.8b80168b.js">
+  <script type="module" crossorigin src="./assets/index.b6cc84f6.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/monaco-editor.6e4fa376.js">
   <link rel="stylesheet" href="./assets/monaco-editor.e98320db.css">
   <link rel="stylesheet" href="./assets/index.ff373be6.css">
 <link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script></head>
@@ -63,14 +63,14 @@
     </div>
   </div>
   <div>
-    <label for="fileSelect">Select a file:</label>
+    <label for="fileSelect">読込ファイル：</label>
     <select id="fileSelect"></select>
-    <button id="loadFileButton2">Load File</button>
-    <button id="refreshFileList">Refresh List</button>
+    <button id="saveFileButton">かきこみ</button>
+    <button id="copyFileButton">新規コピー</button>
+    <button id="refreshFileList">一覧更新</button>
   </div>
   <div class="options">
-    <button id="loadFileButton">Load temp.py</button>
-    <button id="saveFileButton">Save temp.py</button>
+    <button id="loadedfile">...</button>
     <button id="runCodeButton" class="button-run">RUN</button>
     <button id="stopButton" class="button-stop">STOP</button>
     <div id="editor"></div>

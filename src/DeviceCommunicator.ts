@@ -6,8 +6,25 @@ export class DeviceCommunicator {
   private isTerminalOutput: boolean = false; // ターミナル出力の状態を管理
   private terminalOutputCallback: ((chunk: string) => void) | null = null; // ターミナル出力のコールバック関数
 
+  // ステータス管理用プロパティ
+  private replStatus: 'REPL' | 'RUNNING' = 'REPL';
+  // ステータス変更イベント名
+  public static readonly EVENT_STATUS_CHANGED = 'repl-status-changed';
+  
   constructor(serialPortManager: SerialPortManager) {
     this.serialPortManager = serialPortManager;
+  }
+
+  /**
+   * ステータスを更新し、イベントを発火
+   * @param {string} newStatus - 新しいステータス ('REPL' または 'RUNNING')
+   */
+  private updateStatus(newStatus: 'REPL' | 'RUNNING'): void {
+    if (this.replStatus !== newStatus) {
+      this.replStatus = newStatus;
+      console.log(`Status changed to: ${newStatus}`);
+      document.dispatchEvent(new CustomEvent(DeviceCommunicator.EVENT_STATUS_CHANGED, { detail: { status: newStatus } }));
+    }
   }
 
   /**
@@ -71,6 +88,13 @@ export class DeviceCommunicator {
 
         const chunk = new TextDecoder().decode(value);
         console.log('chunk:', chunk); // デバッグ用
+
+        // ステータスを更新
+        if (chunk.includes('>>>')) {
+          this.updateStatus('REPL'); // REPLモード
+        } else {
+          this.updateStatus('RUNNING'); // プログラム実行中
+        }
 
         // コールバック関数が登録されている場合は呼び出す
         if (this.isTerminalOutput && this.terminalOutputCallback) {
@@ -233,7 +257,7 @@ public async getPyFileList(): Promise<string[]> {
       const files = result
         .replace(/[\[\]'\s]/g, '') // 角括弧、シングルクォート、空白を削除
         .split(',') // カンマで分割
-        .filter((file) => file.endsWith('.py')); // .py ファイルのみを抽出
+        .filter((file) => file.endsWith('.py') || file.endsWith('.txt')); // .py または .txt ファイルを抽出
   
       return files;
     } catch (error) {

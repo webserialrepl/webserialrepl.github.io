@@ -90,68 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
   });
 
-});
-
-
-/*
-// temp.pyを読み込む関数
-async function loadTempPy(editor: monaco.editor.IStandaloneCodeEditor) {
-  console.log('loadTempPy...');
-  const filename = 'temp.py';
-  const file = await device.readFile(filename);
-  if (file) {
-    // Uint8ArrayをUTF-8文字列にデコード
-    const text = new TextDecoder('utf-8').decode(file);
-    console.log('text:', text);
-    // エディタに結果を表示
-    editor.setValue(text);
-  } else {
-    console.error('Failed to read file:', filename);
-  }
-}
-
-
-async function populateFileSelect(selectElement: HTMLSelectElement): Promise<void> {
-  const files = await device.getPyFileList();
-  selectElement.innerHTML = ''; // 既存のオプションをクリア
-
-  if (files.length === 0) {
-    const option = document.createElement('option');
-    option.textContent = 'No .py files found';
-    option.disabled = true;
-    selectElement.appendChild(option);
-    return;
-  }
-
-  files.forEach((file) => {
-    const option = document.createElement('option');
-    option.value = file;
-    option.textContent = file;
-    selectElement.appendChild(option);
-  });
-}
-
-
-async function loadSelectedFile(selectElement: HTMLSelectElement, editor: monaco.editor.IStandaloneCodeEditor): Promise<void> {
-  const selectedFile = selectElement.value;
-  if (!selectedFile) {
-    console.error('No file selected');
-    return;
-  }
-
-  try {
-    const fileContent = await device.readFile(selectedFile); // ファイルを読み込む
-    const text = new TextDecoder('utf-8').decode(fileContent); // Uint8Array を文字列に変換
-    editor.setValue(text); // エディタに内容を設定
-    console.log(`Loaded file: ${selectedFile}`);
-  } catch (error) {
-    console.error(`Error loading file ${selectedFile}:`, error);
-  }
-}
-*/
-
-// Monaco Editor の初期化
-document.addEventListener('DOMContentLoaded', async () => {
+  // Monaco Editor の初期化
   const editor = monaco.editor.create(document.getElementById('editor') as HTMLElement, {
     value: '',
     language: 'python',
@@ -183,74 +122,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     await device.sendCommand('\x03'); // CTRL+C
   });
 
+  // シリアル通信の接続状態に応じて stopButton を有効化/無効化
+  document.addEventListener(SerialPortManager.EVENT_CONNECTED, (event) => {
+    stopButton.disabled = false; // 接続中なら有効化
+  });
+  document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {
+    stopButton.disabled = true; // 切断中なら無効化
+  });
+  // 初期状態で無効化
+  stopButton.disabled = true;
 
 });
-
-/*
-
-// Monaco Editorの初期化
-document.addEventListener('DOMContentLoaded', async () => {
-  const editor =
-    monaco.editor.create(document.getElementById('editor') as HTMLElement, {
-      value: '',
-      language: 'python',
-      theme: 'vs-dark',
-    });
-  // 改行コードを LF に設定
-  const model = editor.getModel();
-  if (model) {
-    model.setEOL(monaco.editor.EndOfLineSequence.LF);
-  }
-
-  // Load main.pyボタンのクリックイベント
-  const loadFileButton =
-    document.getElementById('loadFileButton') as HTMLButtonElement;
-  loadFileButton.addEventListener('click', async () => {
-    await loadTempPy(editor);
-  });
-
-  // Send Textボタンのクリックイベント
-  const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
-  saveFileButton.addEventListener('click', async () => {
-    function stringToUint8Array(str: string): Uint8Array {
-      const encoder = new TextEncoder();
-      return encoder.encode(str);
-    }
-    const text = editor.getValue();
-    const binaryData = stringToUint8Array(text);
-    await device.writeFile('temp.py', binaryData); // エディタの内容をファイルに書き込む
-  });
-
-  // run Code ボタンのクリックイベント
-  const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
-  runCodeButton.addEventListener('click', async () => {
-    // CTRL+A, コード, CTRL+D, CTRL+B
-    const text = '\x01' + editor.getValue() + '\x04\x02';
-    await device.sendCommand(text); // エディタの内容を実行
-  });
-
-  // STOPボタン：CTRL-C を送信
-  const stopButton = document.getElementById('stopButton') as HTMLButtonElement;
-  stopButton.addEventListener('click', async ()=> {
-    await device.sendCommand('\x03'); // CTRL+C
-  });
-
-  const fileSelect = document.getElementById('fileSelect') as HTMLSelectElement;
-  // ファイル一覧を取得して <select> に表示
-  // await populateFileSelect(fileSelect);
-
-  const loadFileButton2 = document.getElementById('loadFileButton2') as HTMLButtonElement;
-  // ファイル選択時にエディタに読み込む
-  loadFileButton2.addEventListener('click', async () => {
-    await loadSelectedFile(fileSelect, editor);
-  });
-
-  // ファイル一覧を更新するボタン
-  const refreshButton = document.getElementById('refreshFileList') as HTMLButtonElement;
-  refreshButton.addEventListener('click', async () => {
-    await populateFileSelect(fileSelect);
-  });
-
-});
-
-*/

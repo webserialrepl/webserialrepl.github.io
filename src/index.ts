@@ -111,23 +111,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   // run Code ボタンのクリックイベント
   const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
   runCodeButton.addEventListener('click', async () => {
-    // CTRL+A, コード, CTRL+D, CTRL+B
-    const text = '\x01' + editor.getValue() + '\x04\x02';
-    await device.sendCommand(text); // エディタの内容を実行
+    await device.executeCommand(editor.getValue()); // エディタの内容を実行
   });
 
   // STOPボタン：CTRL-C を送信
   const stopButton = document.getElementById('stopButton') as HTMLButtonElement;
   stopButton.addEventListener('click', async ()=> {
     await device.sendCommand('\x03'); // CTRL+C
+    await device.sendCommand('\x02'); // CTRL+B
   });
 
   // シリアル通信の接続状態に応じて stopButton を有効化/無効化
-  document.addEventListener(SerialPortManager.EVENT_CONNECTED, (event) => {
+  document.addEventListener(SerialPortManager.EVENT_CONNECTED, () => {
     stopButton.disabled = false; // 接続中なら有効化
   });
   document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {
     stopButton.disabled = true; // 切断中なら無効化
+    fileManager.disableAllButtons(); // FileManager のボタンを無効化
   });
   // 初期状態で無効化
   stopButton.disabled = true;

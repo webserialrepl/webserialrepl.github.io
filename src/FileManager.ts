@@ -68,12 +68,26 @@ export class FileManager {
       }
     });
     // 初期状態で無効化
+    this.disableAllButtons();
+
+  }
+
+  /**
+   * すべてのボタンを無効化する
+   */
+  public disableAllButtons(): void {
+    const fileSelect = document.getElementById('fileSelect') as HTMLSelectElement;
+    const refreshButton = document.getElementById('refreshFileList') as HTMLButtonElement;
+    const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
+    const copyFileButton = document.getElementById('copyFileButton') as HTMLButtonElement;
+    const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
+
+    // 初期状態で無効化
     fileSelect.disabled = true;
     refreshButton.disabled = true;
     saveFileButton.disabled = true;
     copyFileButton.disabled = true;
     runCodeButton.disabled = true;
-
   }
 
   /**

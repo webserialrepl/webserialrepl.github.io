@@ -28,12 +28,14 @@ export class DeviceCommunicator {
   }
 
   /**
-   * リードポートのループを止めて、ポートを占有する
+   * ターミナルへの出力ループを止めて、RAWモードにする
    */
-  private async occupyTerminal(): Promise<void> {
-    console.log('occupyTerminal');
-    if (this.isPortBusy) {
-      throw new Error('Port is currently busy.');
+  private async prepareForCommand(): Promise<void> {
+    console.log('prepareForCommand');
+    // REPLモードでない場合は、処理を中断
+    if (this.replStatus !== 'REPL') {
+      console.error('Not in REPL mode. Exiting...');
+      return;
     }
     this.isPortBusy = true;
 
@@ -55,6 +57,7 @@ export class DeviceCommunicator {
     } catch (error) {
       console.error('Error canceling the reader:', error);
     }
+    await this.write('\x01'); // CTRL+A: RAWモードに入る
   }
 
   /**
@@ -86,8 +89,16 @@ export class DeviceCommunicator {
         const { value, done } = await reader.read();
         if (done || !value) break;
 
-        const chunk = new TextDecoder().decode(value);
+        const chunk = new TextDecoder('utf-8').decode(value);
         console.log('chunk:', chunk); // デバッグ用
+        // コントロールコードを検出してダンプを出力
+        if (/[\x00-\x1F\x7F]/.test(chunk)) { // 制御文字を検出
+          const hexDump = Array.from(value as Uint8Array)
+            .map((byte) => byte.toString(16).padStart(2, '0'))
+            .join(' ');
+          console.log('Control characters detected. Hex dump:', hexDump);
+        }
+
 
         // ステータスを更新
         if (chunk.includes('>>>')) {
@@ -119,11 +130,12 @@ export class DeviceCommunicator {
   }
 
   /**
-   * 通常のターミナル出力を再開
+   * RAWモードを抜けて、通常のターミナル出力を再開
    */
-  private async releaseTerminal(): Promise<void> {
+  private async exitRawMode(): Promise<void> {
     this.isPortBusy = false;
     this.isTerminalOutput = true;
+    await this.write('\x02'); // CTRL+B: RAWモードを抜ける
     await this.processReaderData(false); // データを処理する関数を呼び出す
   }
 
@@ -134,15 +146,13 @@ export class DeviceCommunicator {
   public async executeCommand(command: string): Promise<void> {
     console.log('executeCommand:', command);
     try {
-        await this.occupyTerminal(); // ポートを占有
-
-        await this.write('\x01'); // CTRL+A
+        await this.prepareForCommand(); // CTRL+A
         await this.write(command);
         await this.write('\x04'); // CTRL+D
     } catch (error) {
       console.error('Error executing command:', error);
     } finally {
-      this.releaseTerminal(); // ポートを解放
+      this.exitRawMode(); // ポートを解放
     }
   }
 
@@ -153,12 +163,9 @@ export class DeviceCommunicator {
     public async sendCommand(command: string): Promise<void> {
         console.log('sendCommand:', command);
         try {
-            await this.occupyTerminal(); // ポートを占有
-            await this.write(command);
+          await this.write(command);
         } catch (error) {
           console.error('Error executing sendCommand:', error);
-        } finally {
-          this.releaseTerminal(); // ポートを解放
         }
       }
     
@@ -170,17 +177,15 @@ export class DeviceCommunicator {
   public async writeFile(filename: string, content: Uint8Array): Promise<void> {
     console.log('writeFile:', filename);
     try {
-      await this.occupyTerminal(); // ポートを占有
-  
-        await this.write('\x01'); // CTRL+A
-        await this.write(`with open("${filename}", "wb") as f:\r`);
-        const chunk = JSON.stringify(Array.from(content));
-        await this.write(`  f.write(bytes(${chunk}))\r`);
-        await this.write('\x04'); // CTRL+D
+      await this.prepareForCommand(); // CTRL+A
+      await this.write(`with open("${filename}", "wb") as f:\r`);
+      const chunk = JSON.stringify(Array.from(content));
+      await this.write(`  f.write(bytes(${chunk}))\r`);
+      await this.write('\x04'); // CTRL+D
     } catch (error) {
       console.error('Error writing file:', error);
     } finally {
-      this.releaseTerminal(); // ポートを解放
+      this.exitRawMode(); // ポートを解放
     }
   }
 
@@ -195,35 +200,32 @@ public async readFile(filename: string): Promise<Uint8Array> {
   
     try {
       // ポートを占有
-      await this.occupyTerminal();
-  
-        // ファイルを読み取るコマンドを送信
-        await this.write('\x01'); // CTRL+A: raw モード
-        await this.write(`with open("${filename}", "rb") as f:\r`);
-        await this.write('  import ubinascii\r');
-        await this.write('  print(ubinascii.hexlify(f.read()).decode())\r');
-        await this.write('\x04'); // CTRL+D: コマンド終了
+      await this.prepareForCommand(); // CTRL+A
+      await this.write(`with open("${filename}", "rb") as f:\r`);
+      await this.write('  import ubinascii\r');
+      await this.write('  print(ubinascii.hexlify(f.read()).decode())\r');
+      await this.write('\x04'); // CTRL+D: コマンド終了
 
-        // プロンプトを読み飛ばす
-        // console.log('wait >OK....');
-        await this.processReaderData('>OK'); // >OK を待つ
-  
-        // ファイル内容を取得（HEX形式で受信）
-        this.isTerminalOutput = false;
-        const hexContent = await this.processReaderData('\x04'); // CTRL+D を待つ
-        console.log('Received HEX content:', hexContent);
-  
-        // HEX形式をバイナリデータに変換
-        const binaryData = new Uint8Array(
-          hexContent.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
-        );
-        fileContent = binaryData;
+      // プロンプトを読み飛ばす
+      // console.log('wait >OK....');
+      await this.processReaderData('>OK'); // >OK を待つ
+
+      // ファイル内容を取得（HEX形式で受信）
+      this.isTerminalOutput = false;
+      const hexContent = await this.processReaderData('\x04'); // CTRL+D を待つ
+      console.log('Received HEX content:', hexContent);
+
+      // HEX形式をバイナリデータに変換
+      const binaryData = new Uint8Array(
+        hexContent.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
+      );
+      fileContent = binaryData;
 
     } catch (error) {
       console.error('Error reading file:', error);
     } finally {
       // ポートを解放
-      this.releaseTerminal();
+      this.exitRawMode();
     }
     // ファイル内容を返す
     return fileContent;
@@ -236,10 +238,7 @@ public async readFile(filename: string): Promise<Uint8Array> {
 public async getPyFileList(): Promise<string[]> {
     console.log('getPyFileList');
     try {
-      await this.occupyTerminal();
-  
-      // ファイルを読み取るコマンドを送信
-      await this.write('\x01'); // CTRL+A: raw モード
+      await this.prepareForCommand(); // CTRL+A
       const command = 'import os; print(os.listdir())'; // ファイル一覧を取得するコマンド
       await this.write(command);
       await this.write('\x04'); // CTRL+D: コマンド終了
@@ -251,7 +250,7 @@ public async getPyFileList(): Promise<string[]> {
       this.isTerminalOutput = false;
       const result = await this.processReaderData('\x04'); // CTRL+D を待つ
       console.log('Received content:', result);
-      this.releaseTerminal(); // ポートを解放
+      this.exitRawMode(); // ポートを解放
 
       // Python のリスト形式からファイル名を抽出
       const files = result

@@ -16,6 +16,7 @@ npm install
 
 To create a production build in the `dist` folder run,
 ```sh
+cd /app
 npm run build
 ```
 

@@ -106,14 +106,15 @@ export class SerialPortManager {
       try {
         const serial = navigator.serial;
         this.picoport = await serial.requestPort({});
-      } catch (e) {
+      } catch (error) {
+        console.error('Failed to request serial port:', error); // エラーログを追加
         return;
       }
       const portOption = this.maybeAddNewPort(this.picoport);
       portOption.selected = true;
     } else {
       const selectedOption = this.portSelector?.selectedOptions[0] as PortOption;
-      this.picoport = selectedOption.port;
+      this.picoport = selectedOption?.port ?? null;
     }
   }
 

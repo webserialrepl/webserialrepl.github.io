@@ -14,7 +14,7 @@ docker exec -it docker-app-1 /bin/bash
 npm install
 ```
 
-To create a production build in the `dist` folder run,
+# docs ディレクトリにビルドされる。Githubにプッシュすることで、webserial.github.io から利用が可能となる
 ```sh
 cd /app
 npm run build

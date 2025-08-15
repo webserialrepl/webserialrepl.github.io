@@ -7,7 +7,7 @@ export class TabManager {
 
 
   // エディタの内容が変更されたときにファイル名にアスタリスクを追加
-  constructor(private tabBar: HTMLElement, private editor: monaco.editor.IStandaloneCodeEditor, private fileManager: any) {
+  constructor(private tabBar: HTMLElement, private editor: monaco.editor.IStandaloneCodeEditor, private filemgr: any) {
     this.editor.onDidChangeModelContent(() => {
       if (this.activeIndex < 0 || this.activeIndex >= this.tabs.length) return;
       const tab = this.tabs[this.activeIndex];
@@ -35,7 +35,7 @@ export class TabManager {
     // ファイルの読み込みが成功したら内容をアップデート
     var content = '';
     try {
-      content = await this.fileManager.readFile(name);
+      content = await this.filemgr.fileRead(name);
     } catch (error) {
       content = `# ${Date.now()}.py : ${error}`;
       console.warn(content);
@@ -121,7 +121,7 @@ export class TabManager {
     const finalFileName = newFileName.includes('.') ? newFileName : `${newFileName}.py`;
 
     // ファイル名が一覧にあるかチェック
-    if (this.fileManager.exists(finalFileName)) {
+    if (this.filemgr.fileExists(finalFileName)) {
       alert(`ファイル名 "${finalFileName}" はすでに存在します。別の名前を入力してください。`);
       return null;
     }
@@ -140,10 +140,10 @@ export class TabManager {
       this.tabs[this.activeIndex].name = filename;  // 名前をアップデート
     }
     const content = this.tabs[this.activeIndex].model.getValue();
-    await this.fileManager.saveContent(filename, content);
+    await this.filemgr.fileWrite(filename, content);
     this.tabs[this.activeIndex].dispname = filename;  // 表示名もアップデート
     this.render();
-    this.fileManager.populateFileSelect(); // ファイルツリーを更新
+    this.filemgr.fileList(); // ファイルツリーを更新
   }
 
 }

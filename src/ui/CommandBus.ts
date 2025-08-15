@@ -1,4 +1,4 @@
-export type Command = 'new' | 'save' | 'run';
+export type Command = 'new' | 'save' | 'run' | 'list';
 
 export class CommandBus {
   private listeners: { [key: string]: (() => void)[] } = {};

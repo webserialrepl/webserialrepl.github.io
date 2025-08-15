@@ -1,6 +1,5 @@
-# docker-pico-dev
-
-Development environment for WebSerialREPL
+# Web Serial REPL
+MicroPython デバイスのREPLに Web Serial で接続する Web アプリです。
 
 # 開発環境のビルド&起動
 cd docker
@@ -82,5 +81,3 @@ export default defineConfig({
     open: true
   }
 });
-
-

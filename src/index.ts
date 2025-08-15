@@ -60,7 +60,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // SerialPortManager と 
 const serialPortManager = new SerialPortManager();
-await serialPortManager.initialize(); // 初期化処理を実行
 
 // DeviceCommunicator のインスタンスを作成
 const device = new DeviceCommunicator(serialPortManager);
@@ -80,8 +79,6 @@ const repl_terminal = new ReplTerminal(
   new FitAddon(), // FitAddon インスタンス
   device, // DeviceCommunicator インスタンス
 );
-// ターミナルの初期化
-await repl_terminal.initialize(); // 初期化処理を実行
 
 async function repl_terminal_write(chunk: string): Promise<void> {
   // ターミナルに出力
@@ -98,11 +95,17 @@ const editor = monaco.editor.create(document.getElementById('editor') as HTMLEle
 });
 
 // FileManager のインスタンスを作成
-const fileManager = new FileManager(device, editor, repl_terminal);
-await fileManager.initialize();
+const filemgr = new FileManager(device, repl_terminal);
+
+async function main() {
+  await serialPortManager.initialize(); // 初期化処理を実行
+  await repl_terminal.initialize(); // 初期化処理を実行
+  await filemgr.initialize();
+}
+main();
 
 const commands = new CommandBus();
-const tabs = new TabManager(document.getElementById('tab-bar')!, editor, fileManager);
+const tabs = new TabManager(document.getElementById('tab-bar')!, editor, filemgr);
 
 // メニューイベント
 document.getElementById('new-file')?.addEventListener('click', () => commands.emit('new'));
@@ -114,6 +117,10 @@ commands.on('new', () => tabs.addContentTab('<無題>'));
 commands.on('save', () => tabs.saveCurrentTab());
 commands.on('run', async() => {
   await device.executeCommand(editor.getValue()); // エディタの内容を実行
+});
+// ファイル一覧の更新
+commands.on('list', async() => {
+  await filemgr.fileList()
 });
 
 document.getElementById('newFileButton')?.addEventListener('click', () => commands.emit('new'));
@@ -127,6 +134,8 @@ document.getElementById('file-tree')?.addEventListener('sl-selection-change', as
   if (!filename) return;
     tabs.addContentTab(filename);
 });
+document.getElementById('refreshFileList')?.addEventListener('click', () => commands.emit('list'));
+
 
 // run Code ボタンのクリックイベント
 document.getElementById('runCodeButton')?.addEventListener('click', () => commands.emit('run'));
@@ -144,7 +153,7 @@ document.addEventListener(SerialPortManager.EVENT_CONNECTED, () => {
 });
 document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {
   stopButton.disabled = true; // 切断中なら無効化
-  fileManager.disableAllButtons(); // FileManager のボタンを無効化
+  filemgr.disableAllButtons(); // FileManager のボタンを無効化
 });
 // 初期状態で無効化
 stopButton.disabled = true;

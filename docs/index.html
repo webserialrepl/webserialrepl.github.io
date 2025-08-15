@@ -2,6 +2,10 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <title>MicroPython WebSerial REPL</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/dist/themes/light.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.28.1/min/vs/editor/editor.main.min.css">
+
   <style>
     body {
       padding: 0;
@@ -26,11 +30,6 @@
     }
     label.checkbox {
       margin-right: 1em;
-    }
-    #editor {
-      width: 100%;
-      height: 400px;
-      border: 1px solid #ccc;
     }
     .button-default {
       background-color: blue; /* ボタンの背景色 */
@@ -61,36 +60,121 @@
       cursor: not-allowed; /* 無効時のカーソル */
     }
   </style>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.28.1/min/vs/editor/editor.main.min.css">
-  <script type="module" crossorigin src="./assets/index.d5533fd9.js"></script>
+  <style>
+.top-bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 0.5em 1em;
+}
+.top-bar > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 横並び用のラッパーを追加 */
+#main-panel {
+  display: flex;
+  gap: 16px; /* パネル間の余白 */
+  align-items: flex-start;
+}
+
+/* file-panel の幅と高さ + 余白調整 */
+    #file-panel {
+      width: 200px; /* 必要に応じて調整 */
+      min-width: 100px;
+      flex-shrink: 0;
+      height: calc(14 * 1.8em);
+      overflow-y: auto;
+      border: 1px solid var(--sl-color-neutral-300);
+      border-radius: var(--sl-border-radius-medium);
+      padding: 2px;
+      box-sizing: border-box;
+    }
+
+/* editor の幅を調整 */
+    #editor-panel {
+      flex: 1;
+      width: 100%;
+      height: 400px;
+    }
+#tab-bar {
+  height: 1.2em;
+  background: #eee;
+  border-bottom: 1px solid #ccc;
+  display: flex;
+  align-items: flex-end;
+  padding-left: 8px;
+  gap: 4px;
+}
+
+.tab {
+  padding: 0.2em 0.2em;
+  background: #ddd;
+  border: 1px solid #bbb;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  margin-bottom: -1px;
+  cursor: pointer;
+  font-size: 0.8em;
+  color: #333;
+  transition: background 0.2s;
+}
+
+.tab.active {
+  background: #fff;
+  color: #222;
+  border-bottom: 2px solid #4CAF50;
+  font-weight: bold;
+  z-index: 1;
+}
+    #editor {
+      width: 100%;
+      height: 100%;
+      border: 1px solid #ccc;
+    }
+
+  </style>
+  <script type="module" crossorigin src="./assets/index.1d3cb280.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/monaco-editor.6e4fa376.js">
-  <link rel="stylesheet" href="./assets/monaco-editor.e98320db.css">
+  <link rel="stylesheet" href="./assets/monaco-editor.44e2f341.css">
   <link rel="stylesheet" href="./assets/index.ff373be6.css">
 <link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script></head>
 <body>
-  <div class="options">
-    <label for="ports">Port:</label>
-    <select id="ports">
-      <option value="prompt">Click 'せつぞく' to add a port...</option>
-    </select>
-    <button id="connect" class="button-default">せつぞく</button>
+  <div class="top-bar">
+    <div class="options">
+      <label for="ports">Port:</label>
+      <select id="ports">
+        <option value="prompt">せつぞくを押して</option>
+      </select>
+      <button id="connect" class="button-default">せつぞく</button>
+    </div>
+    <div>
+      <button id="newFileButton" disabled>しんきファイル</button>
+      <button id="saveFileButton" disabled>かきこみ</button>
+      <button id="refreshFileList" disabled>一覧更新</button>
+    </div>
+    <div class="options">
+      <button id="runCodeButton" class="button-run" disabled>RUN</button>
+      <button id="stopButton" class="button-stop" disabled>STOP</button>
+    </div>
     <div class="info">
-      <a href="https://github.com/webserialrepl/webserialrepl.github.io">Source Code on GitHub</a>
+      <a href="https://github.com/webserialrepl/webserialrepl.github.io">GitHub</a>
     </div>
   </div>
-  <div>
-    <label for="fileSelect">読込ファイル：</label>
-    <select id="fileSelect"></select>
-    <button id="saveFileButton">かきこみ</button>
-    <button id="copyFileButton">新規コピー</button>
-    <button id="refreshFileList">一覧更新</button>
+
+  <div id="main-panel">
+    <div id="file-panel">
+      <sl-tree id="file-tree" selection="single">
+        <sl-tree-item>デバイスに、せつぞく してください</sl-tree-item>
+      </sl-tree>
+    </div>
+    <div id="editor-panel">
+      <div id="tab-bar"></div>
+      <div id="editor"></div>
+    </div>
   </div>
-  <div class="options">
-    <button id="loadedfile">...</button>
-    <button id="runCodeButton" class="button-run">RUN</button>
-    <button id="stopButton" class="button-stop">STOP</button>
-    <div id="editor"></div>
-  </div>
+
   <div class="options">
     <button id="download">Download output</button>
     <button id="clear">Clear output</button>

@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import tsconfigPaths from 'vite-tsconfig-paths';
 import { VitePWA } from 'vite-plugin-pwa';
 import webmanifest from './src/manifest.json';
 import fs from 'fs';
@@ -23,6 +24,8 @@ export default defineConfig({
     },
   },
   plugins: [
+    tsconfigPaths(), // tsconfig.json のパスを解決
+    // PWA プラグインの設定
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',

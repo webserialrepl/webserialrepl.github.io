@@ -26,6 +26,11 @@ import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
 import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
 
+import '@shoelace-style/shoelace/dist/shoelace.js';
+import { CommandBus } from './ui/CommandBus';
+import { TabManager } from './ui/TabManager';
+
+
 self.MonacoEnvironment = {
   getWorker: function (_moduleId: string, label: string) {
     if (label === 'json') {
@@ -37,6 +42,7 @@ self.MonacoEnvironment = {
     return new EditorWorker();
   },
 };
+    console.log('Build番号の表示');
 
 // Build番号の表示
 document.addEventListener('DOMContentLoaded', () => {
@@ -73,6 +79,39 @@ async function repl_terminal_write(chunk: string): Promise<void> {
   });
 }
 
+// Monaco Editor の初期化
+const editor = monaco.editor.create(document.getElementById('editor') as HTMLElement, {
+  value: '',
+  language: 'python',
+  theme: 'vs-dark',
+});
+// 改行コードを LF に設定
+const model = editor.getModel();
+if (model) {
+  model.setEOL(monaco.editor.EndOfLineSequence.LF);
+}
+
+
+  const commands = new CommandBus();
+  const tabs = new TabManager(document.getElementById('tab-bar')!, editor);
+
+  // メニューイベント
+  document.getElementById('new-file')?.addEventListener('click', () => commands.emit('new'));
+  document.getElementById('save-file')?.addEventListener('click', () => commands.emit('save'));
+  document.getElementById('run-script')?.addEventListener('click', () => commands.emit('run'));
+
+  // コマンド処理
+  commands.on('new', () => tabs.addTab(`untitled${Date.now()}.py`, ''));
+  commands.on('save', () => console.log('Save:', editor.getValue()));
+  commands.on('run', () => console.log('Run:', editor.getValue()));
+
+  // ファイルツリー
+  document.getElementById('file-tree')?.addEventListener('sl-selection-change', (e: any) => {
+    const sel = e.detail.selection[0]?.textContent;
+    if (sel) tabs.addTab(sel, `# ${sel} content`);
+  });
+
+
 /**
  * DOMContentLoaded イベントが発火した際に実行される関数。
  * ターミナルの初期化、リサイズ対応、ダウンロードボタンやクリアボタンの
@@ -92,17 +131,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
   });
 
-  // Monaco Editor の初期化
-  const editor = monaco.editor.create(document.getElementById('editor') as HTMLElement, {
-    value: '',
-    language: 'python',
-    theme: 'vs-dark',
-  });
-  // 改行コードを LF に設定
-  const model = editor.getModel();
-  if (model) {
-    model.setEOL(monaco.editor.EndOfLineSequence.LF);
-  }
+
 
   // FileManager のインスタンスを作成
   const fileManager = new FileManager(device, editor, repl_terminal);
@@ -133,5 +162,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   // 初期状態で無効化
   stopButton.disabled = true;
+
 
 });

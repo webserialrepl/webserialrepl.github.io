@@ -1,14 +1,16 @@
 {
-  "name": "web-pico-editor",
+  "name": "web-serial-repl",
   "version": "0.0.1",
-  "description": "Web Rapsberry Pi Pico Editor using the Web Serial API.",
+  "description": "MicroPython REPL Editor using the Web Serial API.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/jcodeorg/web-pico-editor.git"
   },
   "dependencies": {
+    "@shoelace-style/shoelace": "^2.20.1",
     "@types/w3c-web-serial": "^1.0.3",
+    "lit": "^3.3.1",
     "monaco-editor": "^0.51.0",
     "web-serial-polyfill": "^1.0.14",
     "xterm": "^5.2.1",
@@ -24,7 +26,8 @@
     "typescript": "^4.7.4",
     "vite": "^3.2.10",
     "vite-plugin-eslint": "^1.8.1",
-    "vite-plugin-pwa": "^0.13.3"
+    "vite-plugin-pwa": "^0.13.3",
+    "vite-tsconfig-paths": "^5.1.4"
   },
   "scripts": {
     "dev": "vite --host",

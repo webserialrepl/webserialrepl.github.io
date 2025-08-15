@@ -96,11 +96,6 @@ const editor = monaco.editor.create(document.getElementById('editor') as HTMLEle
   language: 'python',
   theme: 'vs-dark',
 });
-// 改行コードを LF に設定
-const model = editor.getModel();
-if (model) {
-  model.setEOL(monaco.editor.EndOfLineSequence.LF);
-}
 
 // FileManager のインスタンスを作成
 const fileManager = new FileManager(device, editor, repl_terminal);
@@ -115,20 +110,16 @@ document.getElementById('save-file')?.addEventListener('click', () => commands.e
 document.getElementById('run-script')?.addEventListener('click', () => commands.emit('run'));
 
 // コマンド処理
-commands.on('new', () => tabs.addTab(`untitled${Date.now()}.py`, ''));
-commands.on('save', () => {
-  tabs.saveCurrentTab();
-});
+commands.on('new', () => tabs.addContentTab('<無題>'));
+commands.on('save', () => tabs.saveCurrentTab());
 commands.on('run', async() => {
   await device.executeCommand(editor.getValue()); // エディタの内容を実行
 });
-  // ファイルを保存
-  const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
-  saveFileButton.addEventListener('click', () => commands.emit('save'));
 
-  // CTRL+S ショートカットを登録
-  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => commands.emit('save'));
-
+document.getElementById('newFileButton')?.addEventListener('click', () => commands.emit('new'));
+document.getElementById('saveFileButton')?.addEventListener('click', () => commands.emit('save'));
+// CTRL+S ショートカットを登録
+editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => commands.emit('save'));
 
 // ファイルツリーのファイル名をクリックしたら、ファイルを読み込む
 document.getElementById('file-tree')?.addEventListener('sl-selection-change', async (e: any) => {
@@ -138,8 +129,7 @@ document.getElementById('file-tree')?.addEventListener('sl-selection-change', as
 });
 
 // run Code ボタンのクリックイベント
-const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
-runCodeButton.addEventListener('click', () => commands.emit('run'));
+document.getElementById('runCodeButton')?.addEventListener('click', () => commands.emit('run'));
 
 // STOPボタン：CTRL-C を送信
 const stopButton = document.getElementById('stopButton') as HTMLButtonElement;

@@ -1,33 +1,49 @@
 import * as monaco from 'monaco-editor';
 
 export class TabManager {
-  private tabs: { name: string; model: monaco.editor.ITextModel }[] = [];
+  private tabs: { name: string; dispname: string; model: monaco.editor.ITextModel }[] = [];
   private activeIndex = 0;
+  private emp_model = monaco.editor.createModel('', 'python');
+
+
   // エディタの内容が変更されたときにファイル名にアスタリスクを追加
   constructor(private tabBar: HTMLElement, private editor: monaco.editor.IStandaloneCodeEditor, private fileManager: any) {
     this.editor.onDidChangeModelContent(() => {
       if (this.activeIndex < 0 || this.activeIndex >= this.tabs.length) return;
       const tab = this.tabs[this.activeIndex];
-      if (!tab.name.startsWith('*')) {
-        tab.name = '*' + tab.name;
+      if (!tab.dispname.startsWith('*')) {
+        tab.dispname = '*' + tab.name;
         this.render();
       }
     });
   }
 
-  addTab(name: string, content: string) {
-    const model = monaco.editor.createModel(content, 'python');
-    this.tabs.push({ name, model });
-    this.activeIndex = this.tabs.length - 1;
-    this.editor.setModel(model);
-    this.render();
-  }
-
   async addContentTab(name: string) {
-    const content = await this.fileManager.readFile(name);
-    const model = monaco.editor.createModel(content, 'python');
-    this.tabs.push({ name, model });
+    // ファイル名が一覧にあるかチェック
+    if (name!== '<無題>') {
+      for (const tab of this.tabs) {
+        if (tab.name === name) {
+          console.warn(`Tab with name "${name}" already exists.`);
+          return;
+        }
+      }
+    }
+    this.tabs.push({ name, dispname:name, model: this.emp_model });
     this.activeIndex = this.tabs.length - 1;
+    this.editor.setModel(this.emp_model);
+    this.render();
+    // ファイルの読み込みが成功したら内容をアップデート
+    var content = '';
+    try {
+      content = await this.fileManager.readFile(name);
+    } catch (error) {
+      content = `# ${Date.now()}.py : ${error}`;
+      console.warn(content);
+    }
+    const model = monaco.editor.createModel(content, 'python');
+    model.setEOL(monaco.editor.EndOfLineSequence.LF); // 改行コードを LF に設定
+    
+    this.tabs[this.activeIndex].model = model;
     this.editor.setModel(model);
     this.render();
   }
@@ -42,7 +58,7 @@ export class TabManager {
     this.tabBar.innerHTML = '';
     this.tabs.forEach((tab, i) => {
       const div = document.createElement('div');
-      div.textContent = tab.name;
+      div.textContent = tab.dispname;
       div.className = 'tab' + (i === this.activeIndex ? ' active' : '');
 
       // クローズボタンを追加
@@ -54,7 +70,7 @@ export class TabManager {
         e.stopPropagation(); // タブ切り替えイベントを防ぐ
 
         // 変更判定（先頭が * なら変更ありとみなす）
-        const isModified = tab.name.startsWith('*');
+        const isModified = tab.dispname.startsWith('*');
         if (!isModified) {
           this.closeTab(i);
           return;
@@ -89,17 +105,45 @@ export class TabManager {
     this.render();
   }
 
+
+  /**
+   * 新しいファイル名を入力
+   */
+  private newfilename(filename: string): string | null {
+
+    // 新しいファイル名を入力させる
+    const newFileName = prompt('新しいファイル名を入力：', `${filename}`);
+    if (!newFileName) {
+      console.log('File copy canceled');
+      return null;
+    }
+    // 拡張子がない場合は .py を付加
+    const finalFileName = newFileName.includes('.') ? newFileName : `${newFileName}.py`;
+
+    // ファイル名が一覧にあるかチェック
+    if (this.fileManager.exists(finalFileName)) {
+      alert(`ファイル名 "${finalFileName}" はすでに存在します。別の名前を入力してください。`);
+      return null;
+    }
+    return finalFileName;
+  }
+
   async saveCurrentTab() {
     if (this.activeIndex < 0 || this.activeIndex >= this.tabs.length) {
       console.warn('No active tab to save');
       return;
     }
-    const filename = this.tabs[this.activeIndex].name.replace('*', ''); // アスタリスクを削除
+    var filename:string | null = this.tabs[this.activeIndex].name;
+    if (filename === '<無題>') {
+      filename = this.newfilename('');
+      if (filename == null) return;
+      this.tabs[this.activeIndex].name = filename;  // 名前をアップデート
+    }
     const content = this.tabs[this.activeIndex].model.getValue();
     await this.fileManager.saveContent(filename, content);
-    // アスタリスクを削除
-    this.tabs[this.activeIndex].name = filename
+    this.tabs[this.activeIndex].dispname = filename;  // 表示名もアップデート
     this.render();
+    this.fileManager.populateFileSelect(); // ファイルツリーを更新
   }
 
 }

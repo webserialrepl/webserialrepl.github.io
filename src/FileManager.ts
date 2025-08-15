@@ -8,6 +8,7 @@ export class FileManager {
   private terminal: ReplTerminal; // ReplTerminal のインスタンスを保持
   private selectedFile: string | null = null; // 選択されたファイル名を保持
   private fileTreeDisplayed = false; // ファイルツリーが表示されているかどうか
+  private files: string[] = []; // ファイル一覧を保持
 
   constructor(
     device: DeviceCommunicator,
@@ -29,22 +30,14 @@ export class FileManager {
       await this.populateFileSelect();
     });
 
-
-    // ファイルをコピー
-    const copyFileButton = document.getElementById('copyFileButton') as HTMLButtonElement;
-    copyFileButton.addEventListener('click', async () => {
-      await this.copyFile();
-    });
-
-
     // REPLモードになったらボタンを有効化
     const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
     document.addEventListener(DeviceCommunicator.EVENT_STATUS_CHANGED, async(event) => {
       const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
-
+      const newFileButton = document.getElementById('newFileButton') as HTMLButtonElement;
       const customEvent = event as CustomEvent; // CustomEvent 型にキャスト
       const { status } = customEvent.detail;
-      const buttons = [refreshButton, saveFileButton, copyFileButton, runCodeButton];
+      const buttons = [refreshButton, saveFileButton, newFileButton, runCodeButton];
       if (status === 'REPL') {
         if (!this.fileTreeDisplayed) {
           await this.populateFileSelect();      // デバイスの中のファイル一覧を表示
@@ -66,14 +59,14 @@ export class FileManager {
     // const fileSelect = document.getElementById('fileSelect') as HTMLSelectElement;
     const refreshButton = document.getElementById('refreshFileList') as HTMLButtonElement;
     const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
-    const copyFileButton = document.getElementById('copyFileButton') as HTMLButtonElement;
+    const newFileButton = document.getElementById('newFileButton') as HTMLButtonElement;
     const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
 
     // 初期状態で無効化
     // fileSelect.disabled = true;
     refreshButton.disabled = true;
     saveFileButton.disabled = true;
-    copyFileButton.disabled = true;
+    newFileButton.disabled = true;
     runCodeButton.disabled = true;
   }
 
@@ -83,11 +76,11 @@ export class FileManager {
   private async populateFileSelect(): Promise<void> {
     const filetree = document.getElementById('file-tree');
     if (!filetree) return;
-    const files = await this.device.getPyFileList();
+    this.files = await this.device.getPyFileList();
 
     filetree.innerHTML = ''; // 既存の項目をクリア
 
-    files.forEach((file) => {
+    this.files.forEach((file) => {
       const item = document.createElement('sl-tree-item');
       item.textContent = file;
       item.value = file;
@@ -96,6 +89,9 @@ export class FileManager {
     this.fileTreeDisplayed = true; // ファイルツリーが表示されているかどうか
   }
 
+  exists(filename: string): boolean {
+    return this.files.includes(filename);
+  }
 
   /**
    * 選択されたファイルをエディタに読み込む fileSelect
@@ -158,60 +154,6 @@ export class FileManager {
       const err = error as Error;
       console.error(`Error saving file ${this.selectedFile}:`, err);
       this.terminal.logToTerminal(`Error saving file "${this.selectedFile}": ${err.message}`, 'error'); // エラーメッセージを出力
-    }
-  }
-
-  /**
-   * ファイルをコピーして新しいファイルとして保存
-   */
-  private async copyFile(): Promise<void> {
-    if (!this.selectedFile) {
-      console.error('No file selected for copying');
-      return;
-    }
-
-    // 新しいファイル名を入力させる
-    const newFileName = prompt('Enter a new file name:', `${this.selectedFile}`);
-    if (!newFileName) {
-      console.log('File copy canceled');
-      return;
-    }
-
-    // 拡張子がない場合は .py を付加
-    const finalFileName = newFileName.includes('.') ? newFileName : `${newFileName}.py`;
-
-    // ファイル名が一覧にあるかチェック
-    const fileSelect = document.getElementById('fileSelect') as HTMLSelectElement;
-    const existingFiles = Array.from(fileSelect.options).map((option) => option.value);
-    if (existingFiles.includes(finalFileName)) {
-      const overwrite = confirm(`The file "${finalFileName}" already exists. Overwrite?`);
-      if (!overwrite) {
-        console.log('File copy canceled');
-        return;
-      }
-    }
-
-    // 現在のエディタの内容を新しいファイルとして保存
-    const text = this.editor.getValue();
-    const binaryData = new TextEncoder().encode(text);
-    try {
-      await this.device.writeFile(finalFileName, binaryData); // 新しいファイルとして保存
-      console.log(`File copied to: ${finalFileName}`);
-
-      // ファイル一覧に新しいファイルを追加
-      const option = document.createElement('option');
-      option.value = finalFileName;
-      option.textContent = finalFileName;
-      fileSelect.appendChild(option);
-
-      // 新しいファイルをエディタに表示
-      this.selectedFile = finalFileName;
-      const loadedFileButton = document.getElementById('loadedfile') as HTMLButtonElement;
-      if (loadedFileButton) {
-        loadedFileButton.textContent = finalFileName;
-      }
-    } catch (error) {
-      console.error(`Error copying file to ${finalFileName}:`, error);
     }
   }
 

@@ -61,17 +61,17 @@
     }
   </style>
   <style>
-    /* 1行あたりの高さ × 10行ぶん + 余白調整 */
-    #file-panel {
-      /* 高さはフォントやテーマに応じて調整 */
-      height: calc(10 * 1.8em);
-      overflow-y: auto;
-      border: 1px solid var(--sl-color-neutral-300);
-      border-radius: var(--sl-border-radius-medium);
-      padding: 4px;
-      box-sizing: border-box;
-    }
-
+.top-bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 0.5em 1em;
+}
+.top-bar > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 /* 横並び用のラッパーを追加 */
 #main-panel {
   display: flex;
@@ -79,76 +79,97 @@
   align-items: flex-start;
 }
 
-/* file-panel の幅を調整 */
-#file-panel {
-  width: 250px; /* 必要に応じて調整 */
-  min-width: 180px;
-  flex-shrink: 0;
-}
+/* file-panel の幅と高さ + 余白調整 */
+    #file-panel {
+      width: 200px; /* 必要に応じて調整 */
+      min-width: 100px;
+      flex-shrink: 0;
+      height: calc(14 * 1.8em);
+      overflow-y: auto;
+      border: 1px solid var(--sl-color-neutral-300);
+      border-radius: var(--sl-border-radius-medium);
+      padding: 2px;
+      box-sizing: border-box;
+    }
 
 /* editor の幅を調整 */
-    #editor {
+    #editor-panel {
       flex: 1;
       width: 100%;
       height: 400px;
+    }
+#tab-bar {
+  height: 1.2em;
+  background: #eee;
+  border-bottom: 1px solid #ccc;
+  display: flex;
+  align-items: flex-end;
+  padding-left: 8px;
+  gap: 4px;
+}
+
+.tab {
+  padding: 0.2em 0.2em;
+  background: #ddd;
+  border: 1px solid #bbb;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  margin-bottom: -1px;
+  cursor: pointer;
+  font-size: 0.8em;
+  color: #333;
+  transition: background 0.2s;
+}
+
+.tab.active {
+  background: #fff;
+  color: #222;
+  border-bottom: 2px solid #4CAF50;
+  font-weight: bold;
+  z-index: 1;
+}
+    #editor {
+      width: 100%;
+      height: 100%;
       border: 1px solid #ccc;
     }
 
   </style>
 </head>
 <body>
-  <div class="options">
-    <label for="ports">Port:</label>
-    <select id="ports">
-      <option value="prompt">Click 'せつぞく' to add a port...</option>
-    </select>
-    <button id="connect" class="button-default">せつぞく</button>
+  <div class="top-bar">
+    <div class="options">
+      <label for="ports">Port:</label>
+      <select id="ports">
+        <option value="prompt">せつぞくを押して</option>
+      </select>
+      <button id="connect" class="button-default">せつぞく</button>
+    </div>
+    <div>
+      <button id="saveFileButton" disabled>かきこみ</button>
+      <button id="copyFileButton" disabled>新規コピー</button>
+      <button id="refreshFileList" disabled>一覧更新</button>
+    </div>
+    <div class="options">
+      <button id="loadedfile">...</button>
+      <button id="runCodeButton" class="button-run" disabled>RUN</button>
+      <button id="stopButton" class="button-stop" disabled>STOP</button>
+    </div>
     <div class="info">
-      <a href="https://github.com/webserialrepl/webserialrepl.github.io">Source Code on GitHub</a>
+      <a href="https://github.com/webserialrepl/webserialrepl.github.io">GitHub</a>
     </div>
   </div>
-  <div>
-    <label for="fileSelect">読込ファイル：</label>
-    <select id="fileSelect"></select>
-    <button id="saveFileButton">かきこみ</button>
-    <button id="copyFileButton">新規コピー</button>
-    <button id="refreshFileList">一覧更新</button>
-  </div>
-  <div class="options">
-    <button id="loadedfile">...</button>
-    <button id="runCodeButton" class="button-run">RUN</button>
-    <button id="stopButton" class="button-stop">STOP</button>
-  </div>
+
   <div id="main-panel">
     <div id="file-panel">
       <sl-tree id="file-tree" selection="single">
-          <sl-tree-item>src
-            <sl-tree-item>main.ts</sl-tree-item>
-            <sl-tree-item>App.ts</sl-tree-item>
-            <sl-tree-item expanded>components
-              <sl-tree-item>Editor.ts</sl-tree-item>
-              <sl-tree-item>Sidebar.ts</sl-tree-item>
-              <sl-tree-item disabled>Experimental.ts</sl-tree-item>
-            </sl-tree-item>
-            <sl-tree-item>styles.css</sl-tree-item>
-          </sl-tree-item>
-
-          <sl-tree-item>public
-            <sl-tree-item>index.html</sl-tree-item>
-            <sl-tree-item>favicon.svg</sl-tree-item>
-          </sl-tree-item>
-
-          <sl-tree-item>scripts
-            <sl-tree-item selected>build.mjs</sl-tree-item>
-            <sl-tree-item>dev.mjs</sl-tree-item>
-          </sl-tree-item>
-
-          <sl-tree-item>package.json</sl-tree-item>
-          <sl-tree-item>tsconfig.json</sl-tree-item>
-          <sl-tree-item>vite.config.ts</sl-tree-item>
+        <sl-tree-item>デバイスに、せつぞく してください</sl-tree-item>
       </sl-tree>
     </div>
-    <div id="editor"></div>
+    <div id="editor-panel">
+      <div id="tab-bar"></div>
+      <div id="editor"></div>
+    </div>
   </div>
 
   <div class="options">

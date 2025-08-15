@@ -42,7 +42,6 @@ self.MonacoEnvironment = {
     return new EditorWorker();
   },
 };
-    console.log('Build番号の表示');
 
 // Build番号の表示
 document.addEventListener('DOMContentLoaded', () => {
@@ -58,9 +57,19 @@ document.addEventListener('DOMContentLoaded', () => {
   document.body.appendChild(buildInfo);
 });
 
-// SerialPortManager と DeviceCommunicator のインスタンスを作成
+
+// SerialPortManager と 
 const serialPortManager = new SerialPortManager();
+await serialPortManager.initialize(); // 初期化処理を実行
+
+// DeviceCommunicator のインスタンスを作成
 const device = new DeviceCommunicator(serialPortManager);
+
+// シリアルポート接続（接続時にターミナルが使えるようにする）
+document.addEventListener(SerialPortManager.EVENT_CONNECTED, async () => {
+  console.log('Connected to the serial port');
+  await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
+});
 
 // ReplTerminal クラスのインスタンスを作成。
 // スクロールバックバッファを 10,000 行に設定。
@@ -71,6 +80,8 @@ const repl_terminal = new ReplTerminal(
   new FitAddon(), // FitAddon インスタンス
   device, // DeviceCommunicator インスタンス
 );
+// ターミナルの初期化
+await repl_terminal.initialize(); // 初期化処理を実行
 
 async function repl_terminal_write(chunk: string): Promise<void> {
   // ターミナルに出力
@@ -91,77 +102,59 @@ if (model) {
   model.setEOL(monaco.editor.EndOfLineSequence.LF);
 }
 
+// FileManager のインスタンスを作成
+const fileManager = new FileManager(device, editor, repl_terminal);
+await fileManager.initialize();
 
-  const commands = new CommandBus();
-  const tabs = new TabManager(document.getElementById('tab-bar')!, editor);
+const commands = new CommandBus();
+const tabs = new TabManager(document.getElementById('tab-bar')!, editor, fileManager);
 
-  // メニューイベント
-  document.getElementById('new-file')?.addEventListener('click', () => commands.emit('new'));
-  document.getElementById('save-file')?.addEventListener('click', () => commands.emit('save'));
-  document.getElementById('run-script')?.addEventListener('click', () => commands.emit('run'));
+// メニューイベント
+document.getElementById('new-file')?.addEventListener('click', () => commands.emit('new'));
+document.getElementById('save-file')?.addEventListener('click', () => commands.emit('save'));
+document.getElementById('run-script')?.addEventListener('click', () => commands.emit('run'));
 
-  // コマンド処理
-  commands.on('new', () => tabs.addTab(`untitled${Date.now()}.py`, ''));
-  commands.on('save', () => console.log('Save:', editor.getValue()));
-  commands.on('run', () => console.log('Run:', editor.getValue()));
-
-  // ファイルツリー
-  document.getElementById('file-tree')?.addEventListener('sl-selection-change', (e: any) => {
-    const sel = e.detail.selection[0]?.textContent;
-    if (sel) tabs.addTab(sel, `# ${sel} content`);
-  });
-
-
-/**
- * DOMContentLoaded イベントが発火した際に実行される関数。
- * ターミナルの初期化、リサイズ対応、ダウンロードボタンやクリアボタンの
- * イベントリスナーを設定する。
- */
-document.addEventListener('DOMContentLoaded', async () => {
-
-  // ターミナルの初期化
-  await repl_terminal.initialize(); // 初期化処理を実行
-
-  // シリアルポートの初期化処理
-  await serialPortManager.initialize(); // 初期化処理を実行
-
-  // シリアルポート接続（接続時にターミナルが使えるようにする）
-  document.addEventListener(SerialPortManager.EVENT_CONNECTED, async () => {
-    console.log('Connected to the serial port');
-    await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
-  });
-
-
-
-  // FileManager のインスタンスを作成
-  const fileManager = new FileManager(device, editor, repl_terminal);
-
-  // FileManager の初期化処理を実行
-  await fileManager.initialize();
-
-  // run Code ボタンのクリックイベント
-  const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
-  runCodeButton.addEventListener('click', async () => {
-    await device.executeCommand(editor.getValue()); // エディタの内容を実行
-  });
-
-  // STOPボタン：CTRL-C を送信
-  const stopButton = document.getElementById('stopButton') as HTMLButtonElement;
-  stopButton.addEventListener('click', async ()=> {
-    await device.sendCommand('\x03'); // CTRL+C
-    await device.sendCommand('\x02'); // CTRL+B
-  });
-
-  // シリアル通信の接続状態に応じて stopButton を有効化/無効化
-  document.addEventListener(SerialPortManager.EVENT_CONNECTED, () => {
-    stopButton.disabled = false; // 接続中なら有効化
-  });
-  document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {
-    stopButton.disabled = true; // 切断中なら無効化
-    fileManager.disableAllButtons(); // FileManager のボタンを無効化
-  });
-  // 初期状態で無効化
-  stopButton.disabled = true;
-
-
+// コマンド処理
+commands.on('new', () => tabs.addTab(`untitled${Date.now()}.py`, ''));
+commands.on('save', () => {
+  tabs.saveCurrentTab();
 });
+commands.on('run', async() => {
+  await device.executeCommand(editor.getValue()); // エディタの内容を実行
+});
+  // ファイルを保存
+  const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
+  saveFileButton.addEventListener('click', () => commands.emit('save'));
+
+  // CTRL+S ショートカットを登録
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => commands.emit('save'));
+
+
+// ファイルツリーのファイル名をクリックしたら、ファイルを読み込む
+document.getElementById('file-tree')?.addEventListener('sl-selection-change', async (e: any) => {
+  const filename = e.detail.selection[0]?.textContent;
+  if (!filename) return;
+    tabs.addContentTab(filename);
+});
+
+// run Code ボタンのクリックイベント
+const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
+runCodeButton.addEventListener('click', () => commands.emit('run'));
+
+// STOPボタン：CTRL-C を送信
+const stopButton = document.getElementById('stopButton') as HTMLButtonElement;
+stopButton.addEventListener('click', async ()=> {
+  await device.sendCommand('\x03'); // CTRL+C
+  await device.sendCommand('\x02'); // CTRL+B
+});
+
+// シリアル通信の接続状態に応じて stopButton を有効化/無効化
+document.addEventListener(SerialPortManager.EVENT_CONNECTED, () => {
+  stopButton.disabled = false; // 接続中なら有効化
+});
+document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {
+  stopButton.disabled = true; // 切断中なら無効化
+  fileManager.disableAllButtons(); // FileManager のボタンを無効化
+});
+// 初期状態で無効化
+stopButton.disabled = true;

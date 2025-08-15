@@ -27,7 +27,7 @@ export class SerialPortManager {
     // 接続イベントのリスナー
     document.addEventListener(SerialPortManager.EVENT_CONNECTED, () => {
       if (this.connectButton) {
-        this.connectButton.textContent = 'Disconnect';
+        this.connectButton.textContent = 'せつだん';
         this.connectButton.classList.remove('button-default');
       }
     });
@@ -35,7 +35,7 @@ export class SerialPortManager {
     // 接続解除イベントのリスナー
     document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {
       if (this.connectButton) {
-        this.connectButton.textContent = 'Connect';
+        this.connectButton.textContent = 'せつぞく';
         this.connectButton.classList.add('button-default');
       }
     });

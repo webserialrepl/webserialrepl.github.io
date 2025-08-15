@@ -7,6 +7,7 @@ export class FileManager {
   private editor: monaco.editor.IStandaloneCodeEditor;
   private terminal: ReplTerminal; // ReplTerminal のインスタンスを保持
   private selectedFile: string | null = null; // 選択されたファイル名を保持
+  private fileTreeDisplayed = false; // ファイルツリーが表示されているかどうか
 
   constructor(
     device: DeviceCommunicator,
@@ -22,24 +23,12 @@ export class FileManager {
    * 初期化処理
    */
   public async initialize(): Promise<void> {
-    const fileSelect = document.getElementById('fileSelect') as HTMLSelectElement;
-
     // ファイル一覧を取得して <select> に表示
     const refreshButton = document.getElementById('refreshFileList') as HTMLButtonElement;
     refreshButton.addEventListener('click', async () => {
-      await this.populateFileSelect(fileSelect);
+      await this.populateFileSelect();
     });
 
-    // ファイルをセレクトしたら自動的に読み込む
-    fileSelect.addEventListener('change', async () => {
-      await this.loadSelectedFile(fileSelect);
-    });
-
-    // ファイルを保存
-    const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
-    saveFileButton.addEventListener('click', async () => {
-      await this.saveFile();
-    });
 
     // ファイルをコピー
     const copyFileButton = document.getElementById('copyFileButton') as HTMLButtonElement;
@@ -47,28 +36,19 @@ export class FileManager {
       await this.copyFile();
     });
 
-    // CTRL+S ショートカットを登録
-    this.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
-      await this.saveFile();
-    });
-
-    // エディタの内容が変更されたときにファイル名にアスタリスクを追加
-    this.editor.onDidChangeModelContent(() => {
-      const loadedFileButton = document.getElementById('loadedfile') as HTMLButtonElement;
-      if (loadedFileButton && this.selectedFile) {
-        if (!loadedFileButton.textContent?.includes('*')) {
-          loadedFileButton.textContent = `${this.selectedFile} *`; // アスタリスクを追加
-        }
-      }
-    });
 
     // REPLモードになったらボタンを有効化
     const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
-    document.addEventListener(DeviceCommunicator.EVENT_STATUS_CHANGED, (event) => {
+    document.addEventListener(DeviceCommunicator.EVENT_STATUS_CHANGED, async(event) => {
+      const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
+
       const customEvent = event as CustomEvent; // CustomEvent 型にキャスト
       const { status } = customEvent.detail;
-      const buttons = [fileSelect, refreshButton, saveFileButton, copyFileButton, runCodeButton];
+      const buttons = [refreshButton, saveFileButton, copyFileButton, runCodeButton];
       if (status === 'REPL') {
+        if (!this.fileTreeDisplayed) {
+          await this.populateFileSelect();      // デバイスの中のファイル一覧を表示
+        }
         buttons.forEach((button) => (button.disabled = false)); // ボタンを有効化
       } else {
         buttons.forEach((button) => (button.disabled = true)); // ボタンを無効化
@@ -83,14 +63,14 @@ export class FileManager {
    * すべてのボタンを無効化する
    */
   public disableAllButtons(): void {
-    const fileSelect = document.getElementById('fileSelect') as HTMLSelectElement;
+    // const fileSelect = document.getElementById('fileSelect') as HTMLSelectElement;
     const refreshButton = document.getElementById('refreshFileList') as HTMLButtonElement;
     const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
     const copyFileButton = document.getElementById('copyFileButton') as HTMLButtonElement;
     const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
 
     // 初期状態で無効化
-    fileSelect.disabled = true;
+    // fileSelect.disabled = true;
     refreshButton.disabled = true;
     saveFileButton.disabled = true;
     copyFileButton.disabled = true;
@@ -98,39 +78,39 @@ export class FileManager {
   }
 
   /**
-   * ファイル一覧を <select> に表示
+   * ファイル一覧を 'file-tree' に表示
    */
-  private async populateFileSelect(selectElement: HTMLSelectElement): Promise<void> {
+  private async populateFileSelect(): Promise<void> {
+    const filetree = document.getElementById('file-tree');
+    if (!filetree) return;
     const files = await this.device.getPyFileList();
-    selectElement.innerHTML = ''; // 既存のオプションをクリア
 
-    // デフォルトのオプションを追加
-    const defaultOption = document.createElement('option');
-    defaultOption.textContent = 'ファイル読込...';
-    defaultOption.value = ''; // 空の値を設定
-    defaultOption.disabled = true; // 選択不可にする
-    defaultOption.selected = true; // デフォルトで選択状態にする
-    selectElement.appendChild(defaultOption);
-
-    if (files.length === 0) {
-      const noFilesOption = document.createElement('option');
-      noFilesOption.textContent = 'No files available';
-      noFilesOption.disabled = true;
-      selectElement.appendChild(noFilesOption);
-      return;
-    }
+    filetree.innerHTML = ''; // 既存の項目をクリア
 
     files.forEach((file) => {
-      const option = document.createElement('option');
-      option.value = file;
-      option.textContent = file;
-      selectElement.appendChild(option);
+      const item = document.createElement('sl-tree-item');
+      item.textContent = file;
+      item.value = file;
+      filetree.appendChild(item);
     });
+    this.fileTreeDisplayed = true; // ファイルツリーが表示されているかどうか
   }
 
+
   /**
-   * 選択されたファイルをエディタに読み込む
+   * 選択されたファイルをエディタに読み込む fileSelect
    */
+  async readFile(filename: string): Promise<string | null> {
+    try {
+      const fileContent = await this.device.readFile(filename);
+      const text = new TextDecoder('utf-8').decode(fileContent);
+      return text;
+    } catch (error) {
+      console.error(`Error reading file ${filename}:`, error);
+      return null;
+    }
+  }
+
   private async loadSelectedFile(selectElement: HTMLSelectElement): Promise<void> {
     const selectedFile = selectElement.value;
     if (!selectedFile) {
@@ -161,30 +141,24 @@ export class FileManager {
   /**
    * エディタの内容をファイルに保存
    */
-  private async saveFile(): Promise<void> {
-    if (!this.selectedFile) {
-      console.error('No file selected for saving');
-      return;
-    }
-
-    const text = this.editor.getValue();
+  async saveContent(filename: string, text: string): Promise<void> {
     const binaryData = new TextEncoder().encode(text);
     try {
-      await this.device.writeFile(this.selectedFile, binaryData); // 選択されたファイルに保存
-      console.log(`File saved: ${this.selectedFile}`);
-      this.terminal.logToTerminal(`File saved successfully: ${this.selectedFile}`, 'info'); // 成功メッセージを出力
+      await this.device.writeFile(filename, binaryData); // 選択されたファイルに保存
+      console.log(`File saved: ${filename}`);
+      this.terminal.logToTerminal(`File saved successfully: ${filename}`, 'info'); // 成功メッセージを出力
 
       // アスタリスクを削除
-      const loadedFileButton = document.getElementById('loadedfile') as HTMLButtonElement;
-      if (loadedFileButton) {
-        loadedFileButton.textContent = this.selectedFile;
-      }
+      //const loadedFileButton = document.getElementById('loadedfile') as HTMLButtonElement;
+      //if (loadedFileButton) {
+      //  loadedFileButton.textContent = this.selectedFile;
+      //}
 
     } catch (error) {
       const err = error as Error;
       console.error(`Error saving file ${this.selectedFile}:`, err);
       this.terminal.logToTerminal(`Error saving file "${this.selectedFile}": ${err.message}`, 'error'); // エラーメッセージを出力
-      }
+    }
   }
 
   /**

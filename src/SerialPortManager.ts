@@ -276,7 +276,7 @@ export class SerialPortManager {
         // バッファの最後の6文字をチェック
         const lastSixChars = buffer.slice(-6); // バッファの最後の6文字を取得
         if (lastSixChars.includes('>>>')) {
-          console.log('!REPL prompt detected.');
+          console.log('<REPL> prompt detected.');
           this.updateStatus('REPL'); // REPLモード
         } else {
           console.log('!REPL prompt NOT detected.');

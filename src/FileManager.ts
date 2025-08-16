@@ -30,6 +30,7 @@ export class FileManager {
       const { status } = customEvent.detail;
       const buttons = [refreshButton, saveFileButton, newFileButton, runCodeButton];
       if (status === 'REPL') {
+        console.log("<REPL> mode activated");
         if (!this.fileTreeDisplayed) {
           await this.fileList();      // デバイスの中のファイル一覧を表示
         }

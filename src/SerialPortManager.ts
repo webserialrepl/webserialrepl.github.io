@@ -160,7 +160,8 @@ export class SerialPortManager {
     this.serialPort = port; // シリアルポートを保存
 
     let exit = false;
-    while (!exit) {
+    let retry = 0;
+    while (!exit && retry < 5) {
 
       await port.open({ baudRate });
       this.serialPort = port; // シリアルポートを保存
@@ -183,12 +184,12 @@ export class SerialPortManager {
       const readPromise = (async () => {
         let buf = '';
         while (true) {
+          // throw new Error('Temp');
           const { value, done } = await reader.read();
           console.log('Received chunk:', value, done); // デバッグ用
           buf += new TextDecoder().decode(value);
           return buf;
         }
-        return buf; // Ensure a value is returned even if the loop ends
       })();
 
       let result;
@@ -203,7 +204,10 @@ export class SerialPortManager {
 
         } catch (error) {
           console.error('Error during read:', error);
+          reader.releaseLock();
           await port.close();
+          retry++;
+          console.warn(`Retrying connection... (${retry}/5)`);
       }
     }
     return port;
@@ -287,7 +291,11 @@ export class SerialPortManager {
 
     // ポートを一度閉じて再度開く
     if (this.serialPort) {
-      await this.serialPort.close();
+      try {
+        await this.serialPort.close();
+      } catch (error) {
+        console.error('Error closing port:', error);
+      }
       await this.serialPort.open({ baudRate: 115200 });
       console.warn('ポートを再度開き直します。');
     }

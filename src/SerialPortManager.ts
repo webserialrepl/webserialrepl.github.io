@@ -155,7 +155,51 @@ export class SerialPortManager {
     }
   }
 
-  async openPortWithRetry({
+  async openPortWithRetry({baudRate=115200, testCommand='ping\n', timeout=3000}={}) {
+    const port = await navigator.serial.requestPort();
+    //try {
+    //  await port.close();
+    //} catch (e) {
+    //  console.warn('Failed to close port before opening:', e);
+    //}
+    await port.open({ baudRate });
+    this.serialPort = port; // シリアルポートを保存
+
+    // オープン後待機
+    await new Promise(r => setTimeout(r, 200));
+
+    // writer取得して送信
+    const writer = port.writable?.getWriter();
+    await writer?.write(new TextEncoder().encode(testCommand));
+    writer?.releaseLock();
+
+    // テスト受信（Promise.raceでタイムアウト）
+    if (!port.readable) {
+      throw new Error('Port is not readable');
+    }
+    const reader = port.readable.getReader();
+    const readPromise = (async () => {
+      let buf = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += new TextDecoder().decode(value);
+        if (buf.includes('>>>')) return buf;
+      }
+      return buf; // Ensure a value is returned even if the loop ends
+    })();
+
+    const result = await Promise.race([
+      readPromise,
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout')), timeout))
+    ]);
+
+    reader.releaseLock();
+    console.log('接続OK', result);
+    return port;
+  }
+
+  async openPortWithRetry222({
     usbVendorId = null,
     baudRate = 115200,
     maxRetries = 1,
@@ -174,13 +218,14 @@ export class SerialPortManager {
         // 1. ポート選択 & オープン
         port = await navigator.serial.requestPort({ filters: usbVendorId ? [{ usbVendorId }] : [] });
         await port.open({ baudRate });
+        await new Promise(r => setTimeout(r, 400)); // 200〜500ms待機
 
         // 2. テスト送信
         if (port.writable) {
           const writer = port.writable.getWriter();
           const encoder = new TextEncoder();
           await writer.write(encoder.encode(testCommand));
-          //await writer.close();
+          await writer.close().catch(()=>{});
           writer.releaseLock();
         }
 
@@ -190,7 +235,7 @@ export class SerialPortManager {
         //this.serialReader = reader; // シリアルリーダーを保存
         const timer = setTimeout(() => {
           console.warn('テスト受信タイムアウト:', testTimeoutMs, 'ms');
-          reader.cancel()
+          reader.cancel().catch(()=>{});
         }, testTimeoutMs);
           
         let received = '';
@@ -243,7 +288,6 @@ export class SerialPortManager {
   private async openPort(): Promise<void> {
     try {
       const port = await this.openPortWithRetry({
-        usbVendorId: null,
         baudRate: 115200,
         testCommand: 'ping\n'
       });

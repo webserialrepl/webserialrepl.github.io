@@ -177,13 +177,13 @@ export class SerialPortManager {
     }
     const { value, done } = await reader.read();
     //console.log('Received chunk:', value, done); // デバッグ用
-    console.log('Received chunk:', value.length, done); // デバッグ用
+    console.log('Received chunk:', value?.length, done); // デバッグ用
     return { value, done };
   }
 
   private isTerminalOutput: boolean = false; // ターミナル出力の状態を管理
   private leftoverData: string = ''; // 未処理のデータを保持
-  private replStatus: 'REPL' | 'RUNNING' = 'REPL';
+  private replStatus: 'REPL' | 'RUNNING' | null = null;
 
   private updateStatus(newStatus: 'REPL' | 'RUNNING'): void {
     if (this.replStatus !== newStatus) {
@@ -192,7 +192,7 @@ export class SerialPortManager {
       document.dispatchEvent(new CustomEvent('REPL_STATUS_CHANGED', { detail: { status: newStatus } }));
     }
   }
-  public getStatus(): 'REPL' | 'RUNNING' {
+  public getStatus(): 'REPL' | 'RUNNING' | null {
     return this.replStatus;
   }
 

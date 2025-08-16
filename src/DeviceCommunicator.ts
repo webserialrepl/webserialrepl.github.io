@@ -34,12 +34,18 @@ export class DeviceCommunicator {
    */
   public async startTerminalOutput(callback: (chunk: string) => void): Promise<void> {
     console.log('startTerminalOutput');
+
+    await this.serialPortManager.reopen();
+
     this.serialPortManager.getWritablePort();   // 書き込みポートの準備
     this.terminalOutputCallback = callback;
     // this.isPortBusy = false;
     this.isTerminalOutput = true;
-    await this.getReadablePort();
-    await this.processReaderData(false); // データを処理する関数を呼び出す
+    let reader = await this.serialPortManager.getReadablePort();
+    //console.log('getReadablePort', reader);
+    //const { value, done } = await reader.read();
+    //console.log('Read chunk:', value, done); // デバッグ用
+    this.processReaderData(false); // データを処理する関数を呼び出し、終了は待たない
   }
 
   /**
@@ -54,12 +60,9 @@ export class DeviceCommunicator {
     try {
       while (true) {
         const { value, done } = await this.serialPortManager.streamRead();
-        if (done || !value) break;
-
+        if (done) console.log('Stream closed', this.isTerminalOutput);
+        if (done) break;
         const chunk = new TextDecoder('utf-8').decode(value);
-        //console.log('chunk:', chunk); // デバッグ用
-
-        // バッファにデータを追加
         buffer += chunk;
 
         // バッファの最後の6文字をチェック
@@ -92,13 +95,12 @@ export class DeviceCommunicator {
           const [beforeTarget, afterTarget] = buffer.split(targetString);
           buffer = beforeTarget;
           this.leftoverData = afterTarget; // targetString の後のデータを保存
+          console.log('Target string found, processing complete.');
           break;
         }
       }
     } catch (error) {
       console.error('Error processing reader data:', error);
-    } finally {
-      // console.log('quit terminal');
     }
     return buffer;
   }
@@ -291,16 +293,6 @@ public async getPyFileList(): Promise<string[]> {
       console.error('Error fetching file list:', error);
       return [];
     }
-  }
-
-
-  /**
-   * シリアルポートのリーダーを取得
-   * @return {Promise<ReadableStreamDefaultReader>} - シリアルポートのリーダー
-   * @throws {Error} - ポートが利用できない場合にエラーをスロー
-   */
-  private async getReadablePort(): Promise<ReadableStreamDefaultReader> {
-    return await this.serialPortManager.getReadablePort();
   }
 
   /**

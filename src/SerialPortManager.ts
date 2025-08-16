@@ -10,7 +10,7 @@ export class SerialPortManager {
   private portSelector: HTMLSelectElement | undefined = undefined;
   private connectButton: HTMLButtonElement | undefined = undefined;
   private portCounter = 1;
-  private serialPort: SerialPort | undefined;
+  private serialPort: SerialPort | undefined = undefined;
   private serialReader: ReadableStreamDefaultReader | undefined = undefined;
   private serialWriter: WritableStreamDefaultWriter | null = null;
 
@@ -119,25 +119,25 @@ export class SerialPortManager {
   }
 
   private async disconnectFromPort(): Promise<void> {
+    console.log('Disconnecting from port...');
     const localPort = this.serialPort;
     this.serialPort = undefined;
-
-    if (this.serialReader) {
-      await this.serialReader.cancel();
-      this.serialReader.releaseLock();
-      this.serialReader = undefined;
-    }
-    if (this.serialWriter) {
-      await this.serialWriter.close();
-      this.serialWriter.releaseLock();
-      this.serialWriter = null;
-    }
-    if (localPort) {
-      try {
-        await localPort.close();
-      } catch (e) {
-        console.error(e);
+    try {
+      if (this.serialReader) {
+        await this.serialReader.cancel();
+        this.serialReader.releaseLock();
+        this.serialReader = undefined;
       }
+      if (this.serialWriter) {
+        await this.serialWriter.close();
+        this.serialWriter.releaseLock();
+        this.serialWriter = null;
+      }
+      if (localPort) {
+        await localPort.close();
+      }
+    } catch (e) {
+      console.error(e);
     }
     this.markDisconnected();
   }
@@ -155,29 +155,111 @@ export class SerialPortManager {
     }
   }
 
-  private async openPort(): Promise<void> {
-    await this.getSelectedPort();
-    if (!this.serialPort) {
-      console.error('No port selected');
-      return;
-    }
-    if (this.portSelector) {
-      this.portSelector.disabled = true;
-    }
-    try {
-      await this.serialPort.open({ baudRate: 115200 });
-      await new Promise(r => setTimeout(r, 100)); // 安定化のため少し待つ
+  async openPortWithRetry({
+    usbVendorId = null,
+    baudRate = 115200,
+    maxRetries = 3,
+    testCommand = 'ping\n',
+    testTimeoutMs = 2000
+  } = {}) {
+    let attempt = 0;
+    let port;
 
-      console.log('<CONNECTED>');
+    while (attempt < maxRetries) {
+      attempt++;
+      console.log(`ポートオープン試行 ${attempt}/${maxRetries}...`);
+
+      try {
+        // 1. ポート選択 & オープン
+        port = await navigator.serial.requestPort({ filters: usbVendorId ? [{ usbVendorId }] : [] });
+        await port.open({ baudRate });
+
+        // 2. テスト送信
+        if (port.writable) {
+          const writer = port.writable.getWriter();
+          const encoder = new TextEncoder();
+          //await writer.write(encoder.encode(testCommand));
+          //await writer.close();
+          writer.releaseLock();
+        }
+
+        // 3. テスト受信（タイムアウトつき）
+        if (!port.readable) throw new Error('Port is not readable');
+        const reader = port.readable.getReader();
+        //this.serialReader = reader; // シリアルリーダーを保存
+        const timer = setTimeout(() => {
+          console.warn('テスト受信タイムアウト:', testTimeoutMs, 'ms');
+          reader.cancel()
+        }, testTimeoutMs);
+          
+        let received = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          console.log('Received chunk:', value, done); // デバッグ用
+          if (done) break;
+          received += new TextDecoder().decode(value);
+          if (received.includes('>>>')) break; // 成功条件
+        }
+
+        clearTimeout(timer);
+        reader.releaseLock();
+
+        if (received.length > 0) {
+          console.log('ポート接続＆応答確認OK', received);
+          this.serialPort = port; // シリアルポートを保存
+          return port; // 成功時にportを返す
+        } else {
+          console.warn('応答なし、ポートを閉じます');
+          await port.close();
+        }
+
+      } catch (err) {
+        console.error('試行エラー:', err);
+        if (port) {
+          try { await port.close(); } catch {}
+        }
+      }
+
+      // 再試行前に少し待機
+      await new Promise(res => setTimeout(res, 1000));
+    }
+
+    throw new Error('接続失敗: 規定回数リトライしましたが応答がありません');
+  }
+
+  public async reopen(): Promise<void> {
+
+    // ポートを一度閉じて再度開く
+    if (this.serialPort) {
+      await this.serialPort.close();
+      await this.serialPort.open({ baudRate: 115200 });
+      console.warn('ポートを再度開き直します。');
+    }
+
+  }
+
+
+  private async openPort(): Promise<void> {
+    try {
+      const port = await this.openPortWithRetry({
+        usbVendorId: null,
+        baudRate: 115200,
+        maxRetries: 5,
+        testCommand: 'ping\n',
+        testTimeoutMs: 2000
+      });
+      this.serialPort = port;
+      if (this.portSelector) {
+        this.portSelector.disabled = true;
+      }
+      console.log('<CONNECTED>', port);
       // 接続イベントを発生
       document.dispatchEvent(new CustomEvent(SerialPortManager.EVENT_CONNECTED));
     } catch (e) {
-      console.error(e);
       if (e instanceof Error) {
-        console.log(`<ERROR: ${e.message}>`);
+        console.error(`<ERROR: ${e.message}>`);
       }
       this.markDisconnected();
-      return;
     }
   }
 
@@ -201,6 +283,7 @@ export class SerialPortManager {
     try {
       // リーダーをキャンセル
       if (this.serialReader) {
+        console.log('Resetting the reader...');
         await this.serialReader.cancel();
         this.serialReader.releaseLock();
         this.serialReader = undefined;
@@ -223,6 +306,10 @@ export class SerialPortManager {
     const retryDelay = 100; // リトライ間隔 (ミリ秒)
     let retries = 0;
   
+    if (this.serialReader) {
+      console.log('Returning existing serial reader.');
+      return this.serialReader; // 既にリーダーが存在する場合はそれを返す
+    }
     while (!this.serialPort?.readable) {
       if (retries >= maxRetries) {
         throw new Error('Readable port is not available. Ensure the port is open and readable.');
@@ -232,6 +319,7 @@ export class SerialPortManager {
       retries++;
     }
     this.serialReader = this.serialPort.readable.getReader();
+    console.log('Readable port is ready.', this.serialReader);
     if (!this.serialReader) {
       throw new Error('Serial reader is not initialized.');
     }
@@ -243,7 +331,9 @@ export class SerialPortManager {
     if (!reader) {
         throw new Error('Reader is not available.');
     }
-    return await reader.read();
+    const { value, done } = await reader.read();
+    //console.log('Received chunk:', value, done); // デバッグ用
+    return { value, done };
   }
 
 }

@@ -27,7 +27,7 @@ export class ReplTerminal extends Terminal {
 
     // データ入力イベントをリッスンし、デバイスにコマンドを送信。
     this.onData(async (data) => {
-      console.log('Data received:', data);
+      //console.log('Data received:', data);
       // デバイスにデータを送信
       try {
         await this.device.writeDevice(data);

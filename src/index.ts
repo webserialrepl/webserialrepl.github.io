@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // SerialPortManager と 
-const serialPortManager = new SerialPortManager();
+const serialPortManager = new SerialPortManager(repl_terminal_write);
 
 // DeviceCommunicator のインスタンスを作成
 const device = new DeviceCommunicator(serialPortManager);
@@ -67,7 +67,7 @@ const device = new DeviceCommunicator(serialPortManager);
 // シリアルポート接続（接続時にターミナルが使えるようにする）
 document.addEventListener(SerialPortManager.EVENT_CONNECTED, async () => {
   console.log('Connected to the serial port');
-  await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
+  // await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
 });
 
 // ReplTerminal クラスのインスタンスを作成。

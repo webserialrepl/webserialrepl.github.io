@@ -2,111 +2,56 @@ export interface PortOption extends HTMLOptionElement {
   port: SerialPort;
 }
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+function log(msg: string): void {
+  // const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  console.log(msg);
+}
+
 export class SerialPortManager {
-  // イベント名を定義
   static readonly EVENT_CONNECTED = 'serialport-connected';
   static readonly EVENT_DISCONNECTED = 'serialport-disconnected';
 
-  private portSelector: HTMLSelectElement | undefined = undefined;
   private connectButton: HTMLButtonElement | undefined = undefined;
-  private portCounter = 1;
   private serialPort: SerialPort | undefined = undefined;
-  private serialReader: ReadableStreamDefaultReader | undefined = undefined;
+  private serialReader: ReadableStreamDefaultReader | null = null;
   private serialWriter: WritableStreamDefaultWriter | null = null;
+  private reading:boolean = false; // 読み取り中かどうかのフラグ
+  private terminalOutputCallback: ((chunk: string) => void) | null = null; // ターミナル出力のコールバック関数
+
+  constructor(private callback: ((chunk: string) => void) | null = null) {
+    this.terminalOutputCallback = callback;
+  }
 
   // 初期化処理をまとめたメソッド
   public async initialize(): Promise<void> {
-    this.portSelector = document.getElementById('ports') as HTMLSelectElement;
-    this.connectButton = document.getElementById('connect') as HTMLButtonElement;
 
-    // 初期状態の設定
+    this.connectButton = document.getElementById('connect') as HTMLButtonElement;
     if (this.connectButton) {
       this.connectButton.disabled = false;
-    }
-
-    // 接続イベントのリスナー
-    document.addEventListener(SerialPortManager.EVENT_CONNECTED, () => {
-      if (this.connectButton) {
-        this.connectButton.textContent = 'せつだん';
-        this.connectButton.classList.remove('button-default');
-      }
-    });
-
-    // 接続解除イベントのリスナー
-    document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {
-      if (this.connectButton) {
-        this.connectButton.textContent = 'せつぞく';
-        this.connectButton.classList.add('button-default');
-      }
-    });
-
-    /*
-    // 既存のポートを取得して追加
-    const ports: SerialPort[] = await navigator.serial.getPorts();
-    ports.forEach((port) => this.addNewPort(port));
-    */
-
-    // 接続ボタンのクリックイベント
-    if (this.connectButton) {
+      // 接続ボタンのクリックイベント
       this.connectButton.addEventListener('click', async () => {
         if (this.serialPort) {
           await this.disconnectFromPort();
         } else {
           await this.openPort(); // ポートを開く
-          // await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
         }
       });
     }
-
-    /*
-    // シリアルポートの接続・切断イベントのリスナー
-    navigator.serial.addEventListener('connect', (event) => {
-      const portOption = this.addNewPort(event.target as SerialPort);
-      portOption.selected = true;
-    });
-
-    navigator.serial.addEventListener('disconnect', (event) => {
-      const portOption = this.findPortOption(event.target as SerialPort);
-      if (portOption) {
-        portOption.remove();
-      }
-    });
-    */
-
   }
-  
-  /*
-  private findPortOption(port: SerialPort): PortOption | null {
-    if (!this.portSelector) return null;
-    for (let i = 0; i < this.portSelector.options.length; ++i) {
-      const option = this.portSelector.options[i];
-      if (option.value === 'prompt') {
-        continue;
-      }
-      const portOption = option as PortOption;
-      if (portOption.port === port) {
-        return portOption;
-      }
+
+  private setUiDisconnected(): void {
+    this.serialPort = undefined;
+    console.log('<DISCONNECTED>');
+    if (this.connectButton) {
+      this.connectButton.textContent = 'せつぞく';
+      this.connectButton.classList.add('button-default');
     }
-    return null;
-  }
+    // 接続解除イベントを発生
+    document.dispatchEvent(new CustomEvent(SerialPortManager.EVENT_DISCONNECTED));
 
-  private addNewPort(port: SerialPort): PortOption {
-    const portOption = document.createElement('option') as PortOption;
-    portOption.textContent = `Port ${this.portCounter++}`;
-    portOption.port = port;
-    this.portSelector?.appendChild(portOption);
-    return portOption;
   }
-
-  private maybeAddNewPort(port: SerialPort): PortOption {
-    const portOption = this.findPortOption(port);
-    if (portOption) {
-      return portOption;
-    }
-    return this.addNewPort(port);
-  }
-  */
 
   private async disconnectFromPort(): Promise<void> {
     console.log('Disconnecting from port...');
@@ -116,7 +61,7 @@ export class SerialPortManager {
       if (this.serialReader) {
         await this.serialReader.cancel();
         this.serialReader.releaseLock();
-        this.serialReader = undefined;
+        this.serialReader = null;
       }
       if (this.serialWriter) {
         await this.serialWriter.close();
@@ -129,81 +74,35 @@ export class SerialPortManager {
     } catch (e) {
       console.error(e);
     }
-    this.markDisconnected();
+    this.setUiDisconnected();
   }
 
-
-  private markDisconnected(): void {
-    this.serialPort = undefined;
-    console.log('<DISCONNECTED>');
-
-    // 接続解除イベントを発生
-    document.dispatchEvent(new CustomEvent(SerialPortManager.EVENT_DISCONNECTED));
-
-    if (this.portSelector) {
-      this.portSelector.disabled = false;
-    }
-  }
-
-  async openPortWithRetry({baudRate=115200, testCommand='ping\n', timeout=3000}={}) {
-    const port = await navigator.serial.requestPort();
-    this.serialPort = port; // シリアルポートを保存
-
-    let exit = false;
-    let retry = 0;
-    while (!exit && retry < 5) {
-
+  private async openPort(): Promise<void> {
+    try {
+      const port = await navigator.serial.requestPort();
+      this.serialPort = port;
+      const baudRate = 115200;
       await port.open({ baudRate });
-      this.serialPort = port; // シリアルポートを保存
+      await new Promise(r => setTimeout(r, 300));
       console.log('<CONNECTED>', port);
-
-      // オープン後待機
-      await new Promise(r => setTimeout(r, 200));
-
-      // writer取得して送信
-      const writer = port.writable?.getWriter();
-      await writer?.write(new TextEncoder().encode(testCommand));
-      writer?.releaseLock();
-      console.log('Test command sent:', testCommand);
-
-      // テスト受信（Promise.raceでタイムアウト）
-      if (!port.readable) {
-        throw new Error('Port is not readable');
+      this.isTerminalOutput = true;
+      await this.startReadLoop(false, 0x03);
+      
+      if (this.connectButton) {
+        this.connectButton.textContent = 'せつだん';
+        this.connectButton.classList.remove('button-default');
       }
-      const reader = port.readable.getReader();
-      const readPromise = (async () => {
-        let buf = '';
-        while (true) {
-          // throw new Error('Temp');
-          const { value, done } = await reader.read();
-          console.log('Received chunk:', value, done); // デバッグ用
-          buf += new TextDecoder().decode(value);
-          return buf;
-        }
-      })();
-
-      let result;
-      try {
-          result = await Promise.race([
-            readPromise,
-            new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout')), timeout))
-          ]);
-          exit = true;
-          reader.releaseLock();
-          console.log('接続OK', result);
-
-        } catch (error) {
-          console.error('Error during read:', error);
-          reader.releaseLock();
-          await port.close();
-          retry++;
-          console.warn(`Retrying connection... (${retry}/5)`);
+      // 接続イベントを発生
+      document.dispatchEvent(new CustomEvent(SerialPortManager.EVENT_CONNECTED));
+    } catch (e) {
+      if (e instanceof Error) {
+        console.error(`<ERROR: ${e.message}>`);
       }
+      this.setUiDisconnected();
     }
-    return port;
   }
 
-  public async reopen(): Promise<void> {
+  private async reopen(): Promise<void> {
 
     // ポートを一度閉じて再度開く
     if (this.serialPort) {
@@ -218,28 +117,7 @@ export class SerialPortManager {
 
   }
 
-  private async openPort(): Promise<void> {
-    try {
-      const port = await this.openPortWithRetry({
-        baudRate: 115200,
-        testCommand: 'ping\n'
-      });
-      this.serialPort = port;
-      if (this.portSelector) {
-        this.portSelector.disabled = true;
-      }
-      console.log('<CONNECTED>', port);
-      // 接続イベントを発生
-      document.dispatchEvent(new CustomEvent(SerialPortManager.EVENT_CONNECTED));
-    } catch (e) {
-      if (e instanceof Error) {
-        console.error(`<ERROR: ${e.message}>`);
-      }
-      this.markDisconnected();
-    }
-  }
-
-  public getWritablePort(): WritableStreamDefaultWriter | null {
+  private getWritablePort(): WritableStreamDefaultWriter | null {
     if (this.serialPort && this.serialPort.writable) {
       this.serialWriter = this.serialPort.writable.getWriter();
     } else {
@@ -248,35 +126,25 @@ export class SerialPortManager {
     return this.serialWriter;
   }
 
-  public async picowrite(data: Uint8Array) {
+  private async picowrite(data: Uint8Array) {
     await this.serialWriter?.write(data);
   }
 
-  /**
-   * シリアルポートのリーダーをリセット（キャンセルして再作成）
-   */
-  public async resetReader(): Promise<void> {
-    try {
-      // リーダーをキャンセル
-      if (this.serialReader) {
-        console.log('Resetting the reader...');
-        await this.serialReader.cancel();
-        this.serialReader.releaseLock();
-        this.serialReader = undefined;
-        console.log('Reader successfully canceled.');
-      } else {
-        console.error('No reader to cancel.');
-      }
-
-      // リーダーを再作成
-      await this.getReadablePort();
-
-    } catch (error) {
-      console.error('Error resetting the reader:', error);
+  private async stopReadLoop() {
+    this.reading = false;
+    if (this.serialReader) {
+      try { await this.serialReader.cancel(); } catch {}
+      try { this.serialReader.releaseLock(); } catch {}
+      this.serialReader = null;
     }
   }
 
-  public async getReadablePort(): Promise<ReadableStreamDefaultReader> {
+  public async resetReader(): Promise<void> {
+    this.stopReadLoop();
+    console.log('stopReadLoop called');
+  }
+
+  private async getReadablePort(): Promise<ReadableStreamDefaultReader> {
     // ポートが準備されるまで待機
     const maxRetries = 20; // 最大リトライ回数
     const retryDelay = 100; // リトライ間隔 (ミリ秒)
@@ -302,18 +170,18 @@ export class SerialPortManager {
     return this.serialReader;
   }
 
-  public async streamRead(): Promise<ReadableStreamReadResult<Uint8Array>> {
+  private async streamRead(): Promise<ReadableStreamReadResult<Uint8Array>> {
     const reader = this.serialReader;
     if (!reader) {
         throw new Error('Reader is not available.');
     }
     const { value, done } = await reader.read();
     //console.log('Received chunk:', value, done); // デバッグ用
+    console.log('Received chunk:', value.length, done); // デバッグ用
     return { value, done };
   }
 
   private isTerminalOutput: boolean = false; // ターミナル出力の状態を管理
-  public terminalOutputCallback: ((chunk: string) => void) | null = null; // ターミナル出力のコールバック関数
   private leftoverData: string = ''; // 未処理のデータを保持
   private replStatus: 'REPL' | 'RUNNING' = 'REPL';
 
@@ -332,17 +200,73 @@ export class SerialPortManager {
     this.isTerminalOutput = enabled;
   }
 
+    public async send(data:string): Promise<void> {
+      if (!this.serialPort?.writable) {
+        log('送信できません（未接続）');
+        return;
+      }
+      try {
+        const writer = this.serialPort.writable.getWriter();
+        const packet = encoder.encode(data);
+        await writer.write(packet);
+        await writer.close();
+        writer.releaseLock();
+        log(`TX(${packet.length}B): ${JSON.stringify(data)}`);
+      } catch (err) {
+        log(`送信エラー: ${err}`);
+      }
+    }
+
+    // 送信制御文字用関数を追加
+    public async sendControl(asciiCode: number): Promise<void> {
+      if (!this.serialPort?.writable) {
+        log('送信できません（未接続）');
+        return;
+      }
+      try {
+        let writer = this.serialWriter;
+        if (!writer) {
+          writer = this.serialPort.writable.getWriter();
+        }
+        //console.log("send:", port, writer)
+        const packet = new Uint8Array([asciiCode]); // バイナリ直接
+        await writer.write(packet);
+        await writer.close();
+        writer.releaseLock();
+        writer = null;
+        log(`TX control: 0x${asciiCode.toString(16).padStart(2, '0')}`);
+      } catch (err) {
+        log(`送信エラー: ${err}`);
+      }
+    }
+
   /**
    * シリアルポートからデータを読み取り、処理する
    * @param {ReadableStreamDefaultReader} reader - シリアルポートのリーダー
    */
-  public async processReaderData(targetString: string | false): Promise<string> {
+  public async startReadLoop(targetString: string | false = false, command:any): Promise<string> {
     let buffer = this.leftoverData; // 前回の未処理データを初期値として設定
     this.leftoverData = ''; // 未処理データをリセット
     const maxResultSize = 10000; // targetString が false の時保存する最大サイズ
+    
+    //console.log('Starting read loop with targetString:', targetString, 'and command', command);
+    if (!this.serialPort?.readable) {
+      console.error('serialPort.readable is not available');
+      return '';
+    }
+    if (!this.serialReader) {
+      this.serialReader = this.serialPort.readable.getReader();
+    }
+    this.reading = true;
+    console.log('受信ループ開始 ', this.isTerminalOutput);
+
+    if (command) {
+      console.log('Ctrl 送信', command);
+      await this.sendControl(command);
+    }
 
     try {
-      while (true) {
+      while (this.reading) {
         const { value, done } = await this.streamRead();
         if (done) console.log('Stream closed', this.isTerminalOutput);
         if (done) break;

@@ -1,35 +1,15 @@
 import { SerialPortManager } from './SerialPortManager';
 
 export class DeviceCommunicator {
-  private serialPortManager: SerialPortManager;
+  private serial: SerialPortManager;
 
-  constructor(serialPortManager: SerialPortManager) {
-    this.serialPortManager = serialPortManager;
-  }
-
-  /**
-   * ターミナル出力を開始
-   * @param {(chunk: string) => void} callback - ターミナル出力を処理するコールバック関数
-   */
-  public async startTerminalOutput(callback: (chunk: string) => void): Promise<void> {
-    console.log('startTerminalOutput');
-
-    await this.serialPortManager.reopen();
-
-    this.serialPortManager.getWritablePort();   // 書き込みポートの準備
-    this.serialPortManager.terminalOutputCallback = callback;
-    // this.isPortBusy = false;
-    this.serialPortManager.setTerminalOutputEnabled(true);
-    let reader = await this.serialPortManager.getReadablePort();
-    //console.log('getReadablePort', reader);
-    //const { value, done } = await reader.read();
-    //console.log('Read chunk:', value, done); // デバッグ用
-    this.processReaderData(false); // データを処理する関数を呼び出し、終了は待たない
+  constructor(serial: SerialPortManager) {
+    this.serial = serial;
   }
 
 
-  private async processReaderData(targetString: string | false): Promise<string> {
-    return await this.serialPortManager.processReaderData(targetString);
+  private async startReadLoop(targetString: string | false): Promise<string> {
+    return await this.serial.startReadLoop(targetString, false);
   }
 
 
@@ -37,29 +17,27 @@ export class DeviceCommunicator {
    * シリアルポートのリーダーをリセット（キャンセルして再作成）
    */
   private async resetReader(): Promise<void> {
-    await this.serialPortManager.resetReader();
+    await this.serial.resetReader();
   }
 
   /**
    * RAWモードに入る
    */
   private async enterRawMode(): Promise<void> {
-    if (this.serialPortManager.getStatus() !== 'REPL') {
+    if (this.serial.getStatus() !== 'REPL') {
       console.error('Not in REPL mode. Exiting...');
     }
     console.log('Entering RAW mode...');
-    this.serialPortManager.setTerminalOutputEnabled(false);
-    await this.write('\x01'); // CTRL+A
+    this.serial.setTerminalOutputEnabled(false);
+    await this.serial.sendControl(0x01); // CTRL+A
   }
 
   /**
    * RAWモードを抜けて、通常のターミナル出力を再開
    */
   private async exitRawMode(): Promise<void> {
-    // this.isPortBusy = false;
-    this.serialPortManager.setTerminalOutputEnabled(true);
-    await this.write('\x02'); // CTRL+B: RAWモードを抜ける
-    // await this.processReaderData(false); // データを処理する関数を呼び出す
+    this.serial.setTerminalOutputEnabled(true);
+    await this.serial.sendControl(0x02); // CTRL+B: RAWモードを抜ける
   }
 
   /**
@@ -71,7 +49,7 @@ export class DeviceCommunicator {
     try {
         await this.enterRawMode(); // CTRL+A
         await this.write(command);
-        await this.write('\x04'); // CTRL+D
+        await this.serial.sendControl(0x04); // CTRL+D
     } catch (error) {
       console.error('Error executing command:', error);
     } finally {
@@ -104,7 +82,7 @@ export class DeviceCommunicator {
       await this.write(`with open("${filename}", "wb") as f:\r`);
       const chunk = JSON.stringify(Array.from(content));
       await this.write(`  f.write(bytes(${chunk}))\r`);
-      await this.write('\x04'); // CTRL+D
+      await this.serial.sendControl(0x04); // CTRL+D
 
       // 書き込み後に検証
       console.log('Verifying written file...');
@@ -156,16 +134,16 @@ public async readFile(filename: string): Promise<Uint8Array> {
       await this.write(`with open("${filename}", "rb") as f:\r`);
       await this.write('  import ubinascii\r');
       await this.write('  print(ubinascii.hexlify(f.read()).decode())\r');
-      await this.write('\x04'); // CTRL+D: コマンド終了
+      await this.serial.sendControl(0x04); // CTRL+D
 
       // プロンプトを読み飛ばす
       // console.log('wait >OK....');
-      await this.processReaderData('>OK'); // >OK を待つ
+      await this.startReadLoop('>OK'); // >OK を待つ
 
       // ファイル内容を取得（HEX形式で受信）
       // this.isTerminalOutput = false;
-      const hexContent = await this.processReaderData('\x04'); // CTRL+D を待つ
-      this.processReaderData(false); // データを処理する関数を呼び出す
+      const hexContent = await this.startReadLoop('\x04'); // CTRL+D を待つ
+      this.startReadLoop(false); // データを処理する関数を呼び出す
       // console.log('Received HEX content:', hexContent);
 
       // HEX形式をバイナリデータに変換
@@ -193,20 +171,19 @@ public async getPyFileList(): Promise<string[]> {
     try {
       await this.resetReader();
       await this.enterRawMode(); // CTRL+A
-
       await this.write('import os\r');
       await this.write('print(os.listdir())\r');
-      await this.write('\x04'); // CTRL+D: コマンド終了
+      await this.serial.sendControl(0x04); // CTRL+D
       console.log('Command sent:');
   
       // プロンプトを読み飛ばす
-      const skip = await this.processReaderData('>OK'); // >OK を待つ
+      const skip = await this.startReadLoop('>OK'); // >OK を待つ
       console.log('Skip:', skip);
   
       // ファイル内容を取得
       // this.isTerminalOutput = false;
-      const result = await this.processReaderData('\x04'); // CTRL+D を待つ
-      this.processReaderData(false); // データを処理する関数を呼び出す
+      const result = await this.startReadLoop('\x04'); // CTRL+D を待つ
+      this.startReadLoop(false); // データを処理する関数を呼び出す
       console.log('Received content:', result);
       await this.exitRawMode(); // ポートを解放
 
@@ -223,13 +200,8 @@ public async getPyFileList(): Promise<string[]> {
     }
   }
 
-  /**
-   * Write a string to the picowriter.
-   * @param {string} s - The string to write.
-   * @throws {Error} If the picowriter is not available.
-   */
   private async write(s: string) {
-    await this.serialPortManager.picowrite(new TextEncoder().encode(s));
+    await this.serial.send(s);
   }
 
   // 書き込みポートを使用してデバイスにデータを書き込む

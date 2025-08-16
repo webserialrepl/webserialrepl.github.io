@@ -158,13 +158,14 @@ export class SerialPortManager {
   async openPortWithRetry({
     usbVendorId = null,
     baudRate = 115200,
-    maxRetries = 3,
+    maxRetries = 1,
     testCommand = 'ping\n',
-    testTimeoutMs = 2000
+    testTimeoutMs = 4000
   } = {}) {
     let attempt = 0;
     let port;
 
+      // TODO: リトライは securityエラーが発生するので、ダメだ。
     while (attempt < maxRetries) {
       attempt++;
       console.log(`ポートオープン試行 ${attempt}/${maxRetries}...`);
@@ -178,7 +179,7 @@ export class SerialPortManager {
         if (port.writable) {
           const writer = port.writable.getWriter();
           const encoder = new TextEncoder();
-          //await writer.write(encoder.encode(testCommand));
+          await writer.write(encoder.encode(testCommand));
           //await writer.close();
           writer.releaseLock();
         }
@@ -244,9 +245,7 @@ export class SerialPortManager {
       const port = await this.openPortWithRetry({
         usbVendorId: null,
         baudRate: 115200,
-        maxRetries: 5,
-        testCommand: 'ping\n',
-        testTimeoutMs: 2000
+        testCommand: 'ping\n'
       });
       this.serialPort = port;
       if (this.portSelector) {

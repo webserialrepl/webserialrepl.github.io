@@ -64,12 +64,6 @@ const serialPortManager = new SerialPortManager(repl_terminal_write);
 // DeviceCommunicator のインスタンスを作成
 const device = new DeviceCommunicator(serialPortManager);
 
-// シリアルポート接続（接続時にターミナルが使えるようにする）
-document.addEventListener(SerialPortManager.EVENT_CONNECTED, async () => {
-  console.log('Connected to the serial port');
-  // await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
-});
-
 // ReplTerminal クラスのインスタンスを作成。
 // スクロールバックバッファを 10,000 行に設定。
 const repl_terminal = new ReplTerminal(
@@ -143,12 +137,13 @@ document.getElementById('runCodeButton')?.addEventListener('click', () => comman
 // STOPボタン：CTRL-C を送信
 const stopButton = document.getElementById('stopButton') as HTMLButtonElement;
 stopButton.addEventListener('click', async ()=> {
-  await device.sendCommand('\x03'); // CTRL+C
-  await device.sendCommand('\x02'); // CTRL+B
+  await serialPortManager.sendControl(0x03); // CTRL+C
+  await serialPortManager.sendControl(0x02); // CTRL+B
 });
 
 // シリアル通信の接続状態に応じて stopButton を有効化/無効化
 document.addEventListener(SerialPortManager.EVENT_CONNECTED, () => {
+  console.log("<Connected> event");
   stopButton.disabled = false; // 接続中なら有効化
 });
 document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {

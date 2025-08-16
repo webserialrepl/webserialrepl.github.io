@@ -4,6 +4,8 @@ interface SerialPort {
   readable?: ReadableStream<Uint8Array>;
   writable?: WritableStream<Uint8Array>;
   getInfo?(): any;
+  addEventListener(type: 'connect' | 'disconnect', listener: (event: any) => void): void;
+  removeEventListener(type: 'connect' | 'disconnect', listener: (event: any) => void): void;
 }
 interface Navigator {
   serial: {

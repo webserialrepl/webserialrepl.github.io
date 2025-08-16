@@ -10,9 +10,9 @@ export class SerialPortManager {
   private portSelector: HTMLSelectElement | undefined = undefined;
   private connectButton: HTMLButtonElement | undefined = undefined;
   private portCounter = 1;
-  public picoport: SerialPort | undefined;
-  public picoreader: ReadableStreamDefaultReader | undefined = undefined;
-  private picowriter: WritableStreamDefaultWriter | null = null;
+  private serialPort: SerialPort | undefined;
+  private serialReader: ReadableStreamDefaultReader | undefined = undefined;
+  private serialWriter: WritableStreamDefaultWriter | null = null;
 
   // 初期化処理をまとめたメソッド
   public async initialize(): Promise<void> {
@@ -47,10 +47,10 @@ export class SerialPortManager {
     // 接続ボタンのクリックイベント
     if (this.connectButton) {
       this.connectButton.addEventListener('click', async () => {
-        if (this.picoport) {
+        if (this.serialPort) {
           await this.disconnectFromPort();
         } else {
-          await this.openpicoport(); // ポートを開く
+          await this.openPort(); // ポートを開く
           // await device.startTerminalOutput(repl_terminal_write); // ポートから読み取りターミナルに出力
         }
       });
@@ -105,27 +105,33 @@ export class SerialPortManager {
     if (this.portSelector?.value == 'prompt') {
       try {
         const serial = navigator.serial;
-        this.picoport = await serial.requestPort({});
+        this.serialPort = await serial.requestPort({});
       } catch (error) {
         console.error('Failed to request serial port:', error); // エラーログを追加
         return;
       }
-      const portOption = this.maybeAddNewPort(this.picoport);
+      const portOption = this.maybeAddNewPort(this.serialPort);
       portOption.selected = true;
     } else {
       const selectedOption = this.portSelector?.selectedOptions[0] as PortOption;
-      this.picoport = selectedOption?.port ?? null;
+      this.serialPort = selectedOption?.port ?? null;
     }
   }
 
   private async disconnectFromPort(): Promise<void> {
-    const localPort = this.picoport;
-    this.picoport = undefined;
+    const localPort = this.serialPort;
+    this.serialPort = undefined;
 
-    if (this.picoreader) {
-      await this.picoreader.cancel();
+    if (this.serialReader) {
+      await this.serialReader.cancel();
+      this.serialReader.releaseLock();
+      this.serialReader = undefined;
     }
-    this.picowriter?.releaseLock();
+    if (this.serialWriter) {
+      await this.serialWriter.close();
+      this.serialWriter.releaseLock();
+      this.serialWriter = null;
+    }
     if (localPort) {
       try {
         await localPort.close();
@@ -138,7 +144,7 @@ export class SerialPortManager {
 
 
   private markDisconnected(): void {
-    this.picoport = undefined;
+    this.serialPort = undefined;
     console.log('<DISCONNECTED>');
 
     // 接続解除イベントを発生
@@ -149,9 +155,9 @@ export class SerialPortManager {
     }
   }
 
-  private async openpicoport(): Promise<void> {
+  private async openPort(): Promise<void> {
     await this.getSelectedPort();
-    if (!this.picoport) {
+    if (!this.serialPort) {
       console.error('No port selected');
       return;
     }
@@ -159,7 +165,9 @@ export class SerialPortManager {
       this.portSelector.disabled = true;
     }
     try {
-      await this.picoport.open({ baudRate: 115200 });
+      await this.serialPort.open({ baudRate: 115200 });
+      await new Promise(r => setTimeout(r, 100)); // 安定化のため少し待つ
+
       console.log('<CONNECTED>');
       // 接続イベントを発生
       document.dispatchEvent(new CustomEvent(SerialPortManager.EVENT_CONNECTED));
@@ -174,15 +182,68 @@ export class SerialPortManager {
   }
 
   public getWritablePort(): WritableStreamDefaultWriter | null {
-    if (this.picoport && this.picoport.writable) {
-      this.picowriter = this.picoport.writable.getWriter();
+    if (this.serialPort && this.serialPort.writable) {
+      this.serialWriter = this.serialPort.writable.getWriter();
     } else {
-      this.picowriter = null;
+      this.serialWriter = null;
     }
-    return this.picowriter;
+    return this.serialWriter;
   }
 
   public async picowrite(data: Uint8Array) {
-    await this.picowriter?.write(data);
+    await this.serialWriter?.write(data);
   }
+
+  /**
+   * シリアルポートのリーダーをリセット（キャンセルして再作成）
+   */
+  public async resetReader(): Promise<void> {
+    try {
+      // リーダーをキャンセル
+      if (this.serialReader) {
+        await this.serialReader.cancel();
+        this.serialReader.releaseLock();
+        this.serialReader = undefined;
+        console.log('Reader successfully canceled.');
+      } else {
+        console.error('No reader to cancel.');
+      }
+
+      // リーダーを再作成
+      await this.getReadablePort();
+
+    } catch (error) {
+      console.error('Error resetting the reader:', error);
+    }
+  }
+
+  public async getReadablePort(): Promise<ReadableStreamDefaultReader> {
+    // ポートが準備されるまで待機
+    const maxRetries = 20; // 最大リトライ回数
+    const retryDelay = 100; // リトライ間隔 (ミリ秒)
+    let retries = 0;
+  
+    while (!this.serialPort?.readable) {
+      if (retries >= maxRetries) {
+        throw new Error('Readable port is not available. Ensure the port is open and readable.');
+      }
+      console.log(`Waiting for readable port... (${retries + 1}/${maxRetries})`);
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      retries++;
+    }
+    this.serialReader = this.serialPort.readable.getReader();
+    if (!this.serialReader) {
+      throw new Error('Serial reader is not initialized.');
+    }
+    return this.serialReader;
+  }
+
+  public async streamRead(): Promise<ReadableStreamReadResult<Uint8Array>> {
+    const reader = this.serialReader;
+    if (!reader) {
+        throw new Error('Reader is not available.');
+    }
+    return await reader.read();
+  }
+
 }

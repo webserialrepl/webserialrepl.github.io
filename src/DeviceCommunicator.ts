@@ -52,16 +52,12 @@ export class DeviceCommunicator {
     const maxResultSize = 10000; // targetString が false の時保存する最大サイズ
 
     try {
-      const reader = this.serialPortManager.picoreader;
-        if (!reader) {
-            throw new Error('Reader is not available.');
-        }
       while (true) {
-        const { value, done } = await reader.read();
+        const { value, done } = await this.serialPortManager.streamRead();
         if (done || !value) break;
 
         const chunk = new TextDecoder('utf-8').decode(value);
-        console.log('chunk:', chunk); // デバッグ用
+        //console.log('chunk:', chunk); // デバッグ用
 
         // バッファにデータを追加
         buffer += chunk;
@@ -111,25 +107,7 @@ export class DeviceCommunicator {
    * シリアルポートのリーダーをリセット（キャンセルして再作成）
    */
   private async resetReader(): Promise<void> {
-    try {
-      // リーダーをキャンセル
-      if (this.serialPortManager.picoreader) {
-        await this.serialPortManager.picoreader.cancel();
-        console.log('Reader successfully canceled.');
-      } else {
-        console.error('No reader to cancel.');
-      }
-
-      // リーダーを再作成
-      if (this.serialPortManager.picoport && this.serialPortManager.picoport.readable) {
-        this.serialPortManager.picoreader = this.serialPortManager.picoport.readable.getReader();
-        console.log('New reader created.');
-      } else {
-        console.error('No picoport available.');
-      }
-    } catch (error) {
-      console.error('Error resetting the reader:', error);
-    }
+    await this.serialPortManager.resetReader();
   }
 
   /**
@@ -317,30 +295,12 @@ public async getPyFileList(): Promise<string[]> {
 
 
   /**
- * シリアルポートのリーダーを取得
- * @return {Promise<ReadableStreamDefaultReader>} - シリアルポートのリーダー
- * @throws {Error} - ポートが利用できない場合にエラーをスロー
- */
-private async getReadablePort(): Promise<ReadableStreamDefaultReader> {
-    // ポートが準備されるまで待機
-    const maxRetries = 20; // 最大リトライ回数
-    const retryDelay = 100; // リトライ間隔 (ミリ秒)
-    let retries = 0;
-  
-    while (!this.serialPortManager.picoport?.readable) {
-      if (retries >= maxRetries) {
-        throw new Error('Readable port is not available. Ensure the port is open and readable.');
-      }
-      console.log(`Waiting for readable port... (${retries + 1}/${maxRetries})`);
-      await new Promise((resolve) => setTimeout(resolve, retryDelay));
-      retries++;
-    }
-  
-    // 新しいリーダーを作成して保存
-    const reader = this.serialPortManager.picoport.readable.getReader();
-    this.serialPortManager.picoreader = reader;
-    console.log('New reader created.');
-    return reader;
+   * シリアルポートのリーダーを取得
+   * @return {Promise<ReadableStreamDefaultReader>} - シリアルポートのリーダー
+   * @throws {Error} - ポートが利用できない場合にエラーをスロー
+   */
+  private async getReadablePort(): Promise<ReadableStreamDefaultReader> {
+    return await this.serialPortManager.getReadablePort();
   }
 
   /**

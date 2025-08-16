@@ -21,7 +21,7 @@ export class FileManager {
    */
   public async initialize(): Promise<void> {
     // REPLモードになったらボタンを有効化
-    document.addEventListener(DeviceCommunicator.EVENT_STATUS_CHANGED, async(event) => {
+    document.addEventListener('REPL_STATUS_CHANGED', async(event) => {
       const refreshButton = document.getElementById('refreshFileList') as HTMLButtonElement;
       const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
       const newFileButton = document.getElementById('newFileButton') as HTMLButtonElement;

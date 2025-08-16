@@ -2,30 +2,9 @@ import { SerialPortManager } from './SerialPortManager';
 
 export class DeviceCommunicator {
   private serialPortManager: SerialPortManager;
-  // private isPortBusy: boolean = false; // ポートの占有状態を管理
-  private isTerminalOutput: boolean = false; // ターミナル出力の状態を管理
-  private terminalOutputCallback: ((chunk: string) => void) | null = null; // ターミナル出力のコールバック関数
-  private leftoverData: string = ''; // 未処理のデータを保持
 
-  // ステータス管理用プロパティ
-  private replStatus: 'REPL' | 'RUNNING' = 'REPL';
-  // ステータス変更イベント名
-  public static readonly EVENT_STATUS_CHANGED = 'repl-status-changed';
-  
   constructor(serialPortManager: SerialPortManager) {
     this.serialPortManager = serialPortManager;
-  }
-
-  /**
-   * ステータスを更新し、イベントを発火
-   * @param {string} newStatus - 新しいステータス ('REPL' または 'RUNNING')
-   */
-  private updateStatus(newStatus: 'REPL' | 'RUNNING'): void {
-    if (this.replStatus !== newStatus) {
-      this.replStatus = newStatus;
-      console.log(`Status changed to: ${newStatus}`);
-      document.dispatchEvent(new CustomEvent(DeviceCommunicator.EVENT_STATUS_CHANGED, { detail: { status: newStatus } }));
-    }
   }
 
   /**
@@ -38,9 +17,9 @@ export class DeviceCommunicator {
     await this.serialPortManager.reopen();
 
     this.serialPortManager.getWritablePort();   // 書き込みポートの準備
-    this.terminalOutputCallback = callback;
+    this.serialPortManager.terminalOutputCallback = callback;
     // this.isPortBusy = false;
-    this.isTerminalOutput = true;
+    this.serialPortManager.setTerminalOutputEnabled(true);
     let reader = await this.serialPortManager.getReadablePort();
     //console.log('getReadablePort', reader);
     //const { value, done } = await reader.read();
@@ -48,62 +27,11 @@ export class DeviceCommunicator {
     this.processReaderData(false); // データを処理する関数を呼び出し、終了は待たない
   }
 
-  /**
-   * シリアルポートからデータを読み取り、処理する
-   * @param {ReadableStreamDefaultReader} reader - シリアルポートのリーダー
-   */
+
   private async processReaderData(targetString: string | false): Promise<string> {
-    let buffer = this.leftoverData; // 前回の未処理データを初期値として設定
-    this.leftoverData = ''; // 未処理データをリセット
-    const maxResultSize = 10000; // targetString が false の時保存する最大サイズ
-
-    try {
-      while (true) {
-        const { value, done } = await this.serialPortManager.streamRead();
-        if (done) console.log('Stream closed', this.isTerminalOutput);
-        if (done) break;
-        const chunk = new TextDecoder('utf-8').decode(value);
-        buffer += chunk;
-
-        // バッファの最後の6文字をチェック
-        const lastSixChars = buffer.slice(-6); // バッファの最後の6文字を取得
-        if (lastSixChars.includes('>>>')) {
-          console.log('!REPL prompt detected.');
-          this.updateStatus('REPL'); // REPLモード
-        } else {
-          console.log('!REPL prompt NOT detected.');
-          this.updateStatus('RUNNING'); // プログラム実行中
-        }
-
-        // コールバック関数が登録されている場合は呼び出す
-        if (this.isTerminalOutput && this.terminalOutputCallback) {
-          // ASCIIの表示可能な範囲 (0x20-0x7E)、日本語 (Unicode範囲)、改行 (\r, \n) を許可
-          const sanitizedChunk = chunk.replace(/[^\x20-\x7E\u3000-\u9FFF\uFF00-\uFFEF\r\n]/g, ''); 
-          this.terminalOutputCallback(sanitizedChunk);
-        } else {
-          // console.log('Terminal output:', chunk); // デフォルトの動作
-        }
-
-        // `result` のサイズを制限
-        if (!targetString && buffer.length > maxResultSize) {
-          buffer = buffer.slice(buffer.length - maxResultSize); // 古いデータを削除
-          console.error('Result size exceeded maximum limit. Trimming...');
-        }
-
-        // 特定の文字列が含まれている場合、処理を終了
-        if (targetString && buffer.includes(targetString)) {
-          const [beforeTarget, afterTarget] = buffer.split(targetString);
-          buffer = beforeTarget;
-          this.leftoverData = afterTarget; // targetString の後のデータを保存
-          console.log('Target string found, processing complete.');
-          break;
-        }
-      }
-    } catch (error) {
-      console.error('Error processing reader data:', error);
-    }
-    return buffer;
+    return await this.serialPortManager.processReaderData(targetString);
   }
+
 
   /**
    * シリアルポートのリーダーをリセット（キャンセルして再作成）
@@ -116,11 +44,11 @@ export class DeviceCommunicator {
    * RAWモードに入る
    */
   private async enterRawMode(): Promise<void> {
-    if (this.replStatus !== 'REPL') {
+    if (this.serialPortManager.getStatus() !== 'REPL') {
       console.error('Not in REPL mode. Exiting...');
     }
     console.log('Entering RAW mode...');
-    this.isTerminalOutput = false;
+    this.serialPortManager.setTerminalOutputEnabled(false);
     await this.write('\x01'); // CTRL+A
   }
 
@@ -129,7 +57,7 @@ export class DeviceCommunicator {
    */
   private async exitRawMode(): Promise<void> {
     // this.isPortBusy = false;
-    this.isTerminalOutput = true;
+    this.serialPortManager.setTerminalOutputEnabled(true);
     await this.write('\x02'); // CTRL+B: RAWモードを抜ける
     // await this.processReaderData(false); // データを処理する関数を呼び出す
   }

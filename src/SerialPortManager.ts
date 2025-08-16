@@ -40,9 +40,11 @@ export class SerialPortManager {
       }
     });
 
+    /*
     // 既存のポートを取得して追加
     const ports: SerialPort[] = await navigator.serial.getPorts();
     ports.forEach((port) => this.addNewPort(port));
+    */
 
     // 接続ボタンのクリックイベント
     if (this.connectButton) {
@@ -56,6 +58,7 @@ export class SerialPortManager {
       });
     }
 
+    /*
     // シリアルポートの接続・切断イベントのリスナー
     navigator.serial.addEventListener('connect', (event) => {
       const portOption = this.addNewPort(event.target as SerialPort);
@@ -68,8 +71,11 @@ export class SerialPortManager {
         portOption.remove();
       }
     });
+    */
+
   }
   
+  /*
   private findPortOption(port: SerialPort): PortOption | null {
     if (!this.portSelector) return null;
     for (let i = 0; i < this.portSelector.options.length; ++i) {
@@ -100,23 +106,7 @@ export class SerialPortManager {
     }
     return this.addNewPort(port);
   }
-
-  private async getSelectedPort(): Promise<void> {
-    if (this.portSelector?.value == 'prompt') {
-      try {
-        const serial = navigator.serial;
-        this.serialPort = await serial.requestPort({});
-      } catch (error) {
-        console.error('Failed to request serial port:', error); // エラーログを追加
-        return;
-      }
-      const portOption = this.maybeAddNewPort(this.serialPort);
-      portOption.selected = true;
-    } else {
-      const selectedOption = this.portSelector?.selectedOptions[0] as PortOption;
-      this.serialPort = selectedOption?.port ?? null;
-    }
-  }
+  */
 
   private async disconnectFromPort(): Promise<void> {
     console.log('Disconnecting from port...');
@@ -213,80 +203,6 @@ export class SerialPortManager {
     return port;
   }
 
-  async openPortWithRetry222({
-    usbVendorId = null,
-    baudRate = 115200,
-    maxRetries = 1,
-    testCommand = 'ping\n',
-    testTimeoutMs = 4000
-  } = {}) {
-    let attempt = 0;
-    let port;
-
-      // TODO: リトライは securityエラーが発生するので、ダメだ。
-    while (attempt < maxRetries) {
-      attempt++;
-      console.log(`ポートオープン試行 ${attempt}/${maxRetries}...`);
-
-      try {
-        // 1. ポート選択 & オープン
-        port = await navigator.serial.requestPort({ filters: usbVendorId ? [{ usbVendorId }] : [] });
-        await port.open({ baudRate });
-        await new Promise(r => setTimeout(r, 400)); // 200〜500ms待機
-
-        // 2. テスト送信
-        if (port.writable) {
-          const writer = port.writable.getWriter();
-          const encoder = new TextEncoder();
-          await writer.write(encoder.encode(testCommand));
-          await writer.close().catch(()=>{});
-          writer.releaseLock();
-        }
-
-        // 3. テスト受信（タイムアウトつき）
-        if (!port.readable) throw new Error('Port is not readable');
-        const reader = port.readable.getReader();
-        //this.serialReader = reader; // シリアルリーダーを保存
-        const timer = setTimeout(() => {
-          console.warn('テスト受信タイムアウト:', testTimeoutMs, 'ms');
-          reader.cancel().catch(()=>{});
-        }, testTimeoutMs);
-          
-        let received = '';
-        while (true) {
-          const { value, done } = await reader.read();
-          console.log('Received chunk:', value, done); // デバッグ用
-          if (done) break;
-          received += new TextDecoder().decode(value);
-          if (received.includes('>>>')) break; // 成功条件
-        }
-
-        clearTimeout(timer);
-        reader.releaseLock();
-
-        if (received.length > 0) {
-          console.log('ポート接続＆応答確認OK', received);
-          this.serialPort = port; // シリアルポートを保存
-          return port; // 成功時にportを返す
-        } else {
-          console.warn('応答なし、ポートを閉じます');
-          await port.close();
-        }
-
-      } catch (err) {
-        console.error('試行エラー:', err);
-        if (port) {
-          try { await port.close(); } catch {}
-        }
-      }
-
-      // 再試行前に少し待機
-      await new Promise(res => setTimeout(res, 1000));
-    }
-
-    throw new Error('接続失敗: 規定回数リトライしましたが応答がありません');
-  }
-
   public async reopen(): Promise<void> {
 
     // ポートを一度閉じて再度開く
@@ -301,7 +217,6 @@ export class SerialPortManager {
     }
 
   }
-
 
   private async openPort(): Promise<void> {
     try {
@@ -396,5 +311,83 @@ export class SerialPortManager {
     //console.log('Received chunk:', value, done); // デバッグ用
     return { value, done };
   }
+
+  private isTerminalOutput: boolean = false; // ターミナル出力の状態を管理
+  public terminalOutputCallback: ((chunk: string) => void) | null = null; // ターミナル出力のコールバック関数
+  private leftoverData: string = ''; // 未処理のデータを保持
+  private replStatus: 'REPL' | 'RUNNING' = 'REPL';
+
+  private updateStatus(newStatus: 'REPL' | 'RUNNING'): void {
+    if (this.replStatus !== newStatus) {
+      this.replStatus = newStatus;
+      console.log(`Status changed to: ${newStatus}`);
+      document.dispatchEvent(new CustomEvent('REPL_STATUS_CHANGED', { detail: { status: newStatus } }));
+    }
+  }
+  public getStatus(): 'REPL' | 'RUNNING' {
+    return this.replStatus;
+  }
+
+  public setTerminalOutputEnabled(enabled: boolean): void {
+    this.isTerminalOutput = enabled;
+  }
+
+  /**
+   * シリアルポートからデータを読み取り、処理する
+   * @param {ReadableStreamDefaultReader} reader - シリアルポートのリーダー
+   */
+  public async processReaderData(targetString: string | false): Promise<string> {
+    let buffer = this.leftoverData; // 前回の未処理データを初期値として設定
+    this.leftoverData = ''; // 未処理データをリセット
+    const maxResultSize = 10000; // targetString が false の時保存する最大サイズ
+
+    try {
+      while (true) {
+        const { value, done } = await this.streamRead();
+        if (done) console.log('Stream closed', this.isTerminalOutput);
+        if (done) break;
+        const chunk = new TextDecoder('utf-8').decode(value);
+        buffer += chunk;
+
+        // バッファの最後の6文字をチェック
+        const lastSixChars = buffer.slice(-6); // バッファの最後の6文字を取得
+        if (lastSixChars.includes('>>>')) {
+          console.log('!REPL prompt detected.');
+          this.updateStatus('REPL'); // REPLモード
+        } else {
+          console.log('!REPL prompt NOT detected.');
+          this.updateStatus('RUNNING'); // プログラム実行中
+        }
+
+        // コールバック関数が登録されている場合は呼び出す
+        if (this.isTerminalOutput && this.terminalOutputCallback) {
+          // ASCIIの表示可能な範囲 (0x20-0x7E)、日本語 (Unicode範囲)、改行 (\r, \n) を許可
+          const sanitizedChunk = chunk.replace(/[^\x20-\x7E\u3000-\u9FFF\uFF00-\uFFEF\r\n]/g, ''); 
+          this.terminalOutputCallback(sanitizedChunk);
+        } else {
+          // console.log('Terminal output:', chunk); // デフォルトの動作
+        }
+
+        // `result` のサイズを制限
+        if (!targetString && buffer.length > maxResultSize) {
+          buffer = buffer.slice(buffer.length - maxResultSize); // 古いデータを削除
+          console.error('Result size exceeded maximum limit. Trimming...');
+        }
+
+        // 特定の文字列が含まれている場合、処理を終了
+        if (targetString && buffer.includes(targetString)) {
+          const [beforeTarget, afterTarget] = buffer.split(targetString);
+          buffer = beforeTarget;
+          this.leftoverData = afterTarget; // targetString の後のデータを保存
+          console.log('Target string found, processing complete.');
+          break;
+        }
+      }
+    } catch (error) {
+      console.error('Error processing reader data:', error);
+    }
+    return buffer;
+  }
+
 
 }

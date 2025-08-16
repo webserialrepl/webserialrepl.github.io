@@ -157,45 +157,55 @@ export class SerialPortManager {
 
   async openPortWithRetry({baudRate=115200, testCommand='ping\n', timeout=3000}={}) {
     const port = await navigator.serial.requestPort();
-    //try {
-    //  await port.close();
-    //} catch (e) {
-    //  console.warn('Failed to close port before opening:', e);
-    //}
-    await port.open({ baudRate });
     this.serialPort = port; // シリアルポートを保存
 
-    // オープン後待機
-    await new Promise(r => setTimeout(r, 200));
+    let exit = false;
+    while (!exit) {
 
-    // writer取得して送信
-    const writer = port.writable?.getWriter();
-    await writer?.write(new TextEncoder().encode(testCommand));
-    writer?.releaseLock();
+      await port.open({ baudRate });
+      this.serialPort = port; // シリアルポートを保存
+      console.log('<CONNECTED>', port);
 
-    // テスト受信（Promise.raceでタイムアウト）
-    if (!port.readable) {
-      throw new Error('Port is not readable');
-    }
-    const reader = port.readable.getReader();
-    const readPromise = (async () => {
-      let buf = '';
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += new TextDecoder().decode(value);
-        if (buf.includes('>>>')) return buf;
+      // オープン後待機
+      await new Promise(r => setTimeout(r, 200));
+
+      // writer取得して送信
+      const writer = port.writable?.getWriter();
+      await writer?.write(new TextEncoder().encode(testCommand));
+      writer?.releaseLock();
+      console.log('Test command sent:', testCommand);
+
+      // テスト受信（Promise.raceでタイムアウト）
+      if (!port.readable) {
+        throw new Error('Port is not readable');
       }
-      return buf; // Ensure a value is returned even if the loop ends
-    })();
+      const reader = port.readable.getReader();
+      const readPromise = (async () => {
+        let buf = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          console.log('Received chunk:', value, done); // デバッグ用
+          buf += new TextDecoder().decode(value);
+          return buf;
+        }
+        return buf; // Ensure a value is returned even if the loop ends
+      })();
 
-    const result = await Promise.race([
-      readPromise,
-      new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout')), timeout))
-    ]);
+      let result;
+      try {
+          result = await Promise.race([
+            readPromise,
+            new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout')), timeout))
+          ]);
+          exit = true;
+          reader.releaseLock();
+          console.log('接続OK', result);
 
-    reader.releaseLock();
-    console.log('接続OK', result);
+        } catch (error) {
+          console.error('Error during read:', error);
+          await port.close();
+      }
+    }
     return port;
   }
 

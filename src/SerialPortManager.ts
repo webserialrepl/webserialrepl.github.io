@@ -44,9 +44,11 @@ export class SerialPortManager {
     }
   }
 
+  // UIを切断状態に設定
   private setUiDisconnected(): void {
     this.serialPort = undefined;
     console.log('<DISCONNECTED>');
+    // 接続ボタンの表示を更新
     if (this.connectButton) {
       this.connectButton.textContent = 'せつぞく';
       this.connectButton.classList.add('button-default');
@@ -56,7 +58,7 @@ export class SerialPortManager {
 
   }
 
-
+  // シリアル接続の切断処理
   private async cleanup() {
     try { await this.stopReadLoop(); } catch {}
     try {

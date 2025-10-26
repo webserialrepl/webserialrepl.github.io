@@ -60,6 +60,16 @@ export class FileManager {
     saveFileButton.disabled = true;
     newFileButton.disabled = true;
     runCodeButton.disabled = true;
+
+    // 既存のファイルツリーを安全にクリア（要素が存在する場合のみ）
+    const filetreeElement = document.getElementById('file-tree');
+    if (filetreeElement) {
+      // innerHTML を直接上書きする代わりに子ノードを削除して安全性を高める
+      while (filetreeElement.firstChild) {
+        filetreeElement.removeChild(filetreeElement.firstChild);
+      }
+    }
+
   }
 
   /**

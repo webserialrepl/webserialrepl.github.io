@@ -69,7 +69,7 @@ export class FileManager {
         filetreeElement.removeChild(filetreeElement.firstChild);
       }
     }
-
+    this.fileTreeDisplayed = false; // ファイルツリーが表示されているかどうか
   }
 
   /**

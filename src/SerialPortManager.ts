@@ -18,6 +18,10 @@ export class SerialPortManager {
   private serialReader: ReadableStreamDefaultReader | null = null;
   private serialWriter: WritableStreamDefaultWriter | null = null;
   private reading:boolean = false; // 読み取り中かどうかのフラグ
+  // 単一バックグラウンドループ用の状態
+  private backgroundLoopRunning: boolean = false;
+  private receiveBuffer: string = '';
+  private waiters: Array<{ target: string; resolve: (s: string) => void; reject: (e: any) => void; }> = [];
   private terminalOutputCallback: ((chunk: string) => void) | null = null; // ターミナル出力のコールバック関数
   private isTerminalOutput: boolean = false; // ターミナル出力の状態を管理
   private leftoverData: string = ''; // 未処理のデータを保持
@@ -152,7 +156,7 @@ export class SerialPortManager {
   }
 
   public async resetReader(): Promise<void> {
-    this.stopReadLoop();
+    await this.stopReadLoop();
     console.log('stopReadLoop called');
   }
 
@@ -228,81 +232,133 @@ export class SerialPortManager {
    * @param {ReadableStreamDefaultReader} reader - シリアルポートのリーダー
    */
   public async startReadLoop(targetString: string | false = false, command:any): Promise<string> {
-    let buffer = this.leftoverData; // 前回の未処理データを初期値として設定
-    this.leftoverData = ''; // 未処理データをリセット
-    const maxResultSize = 10000; // targetString が false の時保存する最大サイズ
-    
-    // prevent starting a second background read loop when one is already running
-    if (this.reading && targetString === false) {
-      console.log('Read loop already running - skipping start of another loop');
-      return '';
-    }
-    //console.log('Starting read loop with targetString:', targetString, 'and command', command);
-    if (!this.serialPort?.readable) {
-      console.error('serialPort.readable is not available');
-      return '';
-    }
-    if (!this.serialReader) {
-      this.serialReader = this.serialPort.readable.getReader();
-    }
-  this.reading = true;
-    console.log('受信ループ開始 ', this.isTerminalOutput);
+    // 既にバックグラウンドループを走らせるようにしておき、
+    // targetString が指定された場合は waiter を登録して待機する動作に変更します。
 
+    // まずコマンドがあれば送信
     if (command) {
       console.log('Ctrl 送信', command);
       await this.sendControl(command);
     }
 
+    // バックグラウンドループが未起動なら起動
+    if (!this.backgroundLoopRunning) {
+      // fire-and-forget でバックグラウンドループを開始
+      this.startBackgroundLoop().catch((e) => console.error('Background loop error:', e));
+    }
+
+    // targetString が false の場合は単にバックグラウンドを動かすのみ
+    if (targetString === false) {
+      return '';
+    }
+
+    // targetString が指定されたら waiter を作成して待つ
+    return await new Promise<string>((resolve, reject) => {
+      this.waiters.push({ target: targetString, resolve, reject });
+    });
+  }
+
+  // 単一のバックグラウンド読み取りループ
+  private async startBackgroundLoop(): Promise<void> {
+    if (this.backgroundLoopRunning) return;
+    if (!this.serialPort?.readable) {
+      console.error('serialPort.readable is not available for background loop');
+      return;
+    }
+    if (!this.serialReader) {
+      this.serialReader = this.serialPort.readable.getReader();
+    }
+    this.backgroundLoopRunning = true;
+    this.reading = true;
+    console.log('受信バックグラウンドループ開始', this.isTerminalOutput);
+
     try {
       while (this.reading) {
         const { value, done } = await this.streamRead();
-        if (done) console.log('Stream closed', this.isTerminalOutput);
-        if (done) break;
-        const chunk = new TextDecoder('utf-8').decode(value);
-        buffer += chunk;
-
-        // バッファの最後の6文字をチェック
-        const lastSixChars = buffer.slice(-6); // バッファの最後の6文字を取得
-        if (lastSixChars.includes('>>>')) {
-          console.log('<REPL> prompt detected.');
-          this.updateStatus('REPL'); // REPLモード
-        } else {
-          console.log('!REPL prompt NOT detected.');
-          this.updateStatus('RUNNING'); // プログラム実行中
-        }
-
-        // コールバック関数が登録されている場合は呼び出す
-        if (this.isTerminalOutput && this.terminalOutputCallback) {
-          // ASCIIの表示可能な範囲 (0x20-0x7E)、日本語 (Unicode範囲)、改行 (\r, \n) を許可
-          const sanitizedChunk = chunk.replace(/[^\x20-\x7E\u3000-\u9FFF\uFF00-\uFFEF\r\n]/g, ''); 
-          this.terminalOutputCallback(sanitizedChunk);
-        } else {
-          // console.log('Terminal output:', chunk); // デフォルトの動作
-        }
-
-        // `result` のサイズを制限
-        if (!targetString && buffer.length > maxResultSize) {
-          buffer = buffer.slice(buffer.length - maxResultSize); // 古いデータを削除
-          console.error('Result size exceeded maximum limit. Trimming...');
-        }
-
-        // 特定の文字列が含まれている場合、処理を終了
-        if (targetString && buffer.includes(targetString)) {
-          const [beforeTarget, afterTarget] = buffer.split(targetString);
-          buffer = beforeTarget;
-          this.leftoverData = afterTarget; // targetString の後のデータを保存
-          console.log('Target string found, processing complete.');
+        if (done) {
+          console.log('Stream closed', this.isTerminalOutput);
           break;
+        }
+        if (!value) continue;
+        const chunk = new TextDecoder('utf-8').decode(value);
+        // デバッグ用に生のバイト列のログを入れたい場合はここを有効化
+        // console.log(new Date().toISOString(), 'RX HEX:', Array.from(value).map(b => b.toString(16).padStart(2,'0')).join(' '));
+
+        // 受信バッファに追加
+        this.receiveBuffer += chunk;
+
+        // REPL プロンプト判定
+        const lastSixChars = this.receiveBuffer.slice(-6);
+        if (lastSixChars.includes('>>>')) {
+          this.updateStatus('REPL');
+        } else {
+          this.updateStatus('RUNNING');
+        }
+
+        // UI 出力
+        if (this.isTerminalOutput && this.terminalOutputCallback) {
+          const sanitizedChunk = chunk.replace(/[^\x20-\x7E\u3000-\u9FFF\uFF00-\uFFEF\r\n]/g, '');
+          this.terminalOutputCallback(sanitizedChunk);
+        }
+
+        // waiters をチェックして最も早くマッチするものを解決
+        let matched = true;
+        while (matched) {
+          matched = false;
+          let earliestIndex = -1;
+          let earliestWaiterIdx = -1;
+          for (let i = 0; i < this.waiters.length; i++) {
+            const w = this.waiters[i];
+            const idx = this.receiveBuffer.indexOf(w.target);
+            if (idx >= 0 && (earliestIndex === -1 || idx < earliestIndex)) {
+              earliestIndex = idx;
+              earliestWaiterIdx = i;
+            }
+          }
+          if (earliestWaiterIdx >= 0) {
+            const w = this.waiters.splice(earliestWaiterIdx, 1)[0];
+            const idx = earliestIndex;
+            const before = this.receiveBuffer.slice(0, idx);
+            const after = this.receiveBuffer.slice(idx + w.target.length);
+            // consume buffer and save leftover
+            this.receiveBuffer = '';
+            this.leftoverData = after;
+            try {
+              w.resolve(before);
+            } catch (e) {
+              w.reject(e);
+            }
+            matched = true;
+          }
+        }
+  // バッファ制限
+        const maxResultSize = 10000;
+        if (this.receiveBuffer.length > maxResultSize) {
+          this.receiveBuffer = this.receiveBuffer.slice(this.receiveBuffer.length - maxResultSize);
+          console.error('Receive buffer exceeded maximum limit. Trimming...');
         }
       }
     } catch (error) {
-      console.error('Error processing reader data:', error);
-    }
-    finally {
-      // mark as not reading when loop exits so callers can start a new loop
+      console.error('Error processing reader data in background loop:', error);
+    } finally {
+      this.backgroundLoopRunning = false;
       this.reading = false;
+      // 残っている waiter を拒否
+      while (this.waiters.length) {
+        const w = this.waiters.shift()!;
+        w.reject(new Error('Background loop terminated before target found'));
+      }
+      // リーダーのクリーンアップ
+      try {
+        if (this.serialReader) {
+          try { await this.serialReader.cancel(); } catch {}
+          try { this.serialReader.releaseLock(); } catch {}
+          this.serialReader = null;
+        }
+      } catch (e) {
+        console.error('Error cleaning up reader:', e);
+      }
     }
-    return buffer;
   }
 
 

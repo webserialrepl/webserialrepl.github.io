@@ -232,6 +232,11 @@ export class SerialPortManager {
     this.leftoverData = ''; // 未処理データをリセット
     const maxResultSize = 10000; // targetString が false の時保存する最大サイズ
     
+    // prevent starting a second background read loop when one is already running
+    if (this.reading && targetString === false) {
+      console.log('Read loop already running - skipping start of another loop');
+      return '';
+    }
     //console.log('Starting read loop with targetString:', targetString, 'and command', command);
     if (!this.serialPort?.readable) {
       console.error('serialPort.readable is not available');
@@ -240,7 +245,7 @@ export class SerialPortManager {
     if (!this.serialReader) {
       this.serialReader = this.serialPort.readable.getReader();
     }
-    this.reading = true;
+  this.reading = true;
     console.log('受信ループ開始 ', this.isTerminalOutput);
 
     if (command) {
@@ -292,6 +297,10 @@ export class SerialPortManager {
       }
     } catch (error) {
       console.error('Error processing reader data:', error);
+    }
+    finally {
+      // mark as not reading when loop exits so callers can start a new loop
+      this.reading = false;
     }
     return buffer;
   }

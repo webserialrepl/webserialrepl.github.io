@@ -137,30 +137,49 @@ public async readFile(filename: string): Promise<Uint8Array> {
       await this.serial.sendControl(0x04); // CTRL+D
 
       // プロンプトを読み飛ばす
-      // console.log('wait >OK....');
       await this.startReadLoop('>OK'); // >OK を待つ
 
-  // ファイル内容を取得（HEX形式で受信）
-  // this.isTerminalOutput = false;
-  // readFile can return a large amount of data — request a larger maxSize (500KB)
-  const hexContent = await this.startReadLoop('\x04', { maxSize: 500000 }); // CTRL+D を待つ
-  this.startReadLoop(false); // データを処理する関数を呼び出す
-      // console.log('Received HEX content:', hexContent);
+      // ファイル内容を取得（HEX形式で受信）
+      // this.isTerminalOutput = false;
+      // readFile can return a large amount of data — request a larger maxSize (500KB)
+      const hexContent = await this.startReadLoop('\x04', { maxSize: 500000 }); // CTRL+D を待つ
+      this.startReadLoop(false); // データを処理する関数を呼び出す
+
+      // 受信中にシリアル側でバッファがトリムされていたらデータ欠損の可能性があるためエラーにする
+      try {
+        if (this.serial.consumeTrimFlag()) {
+          throw new Error('Receive buffer trimmed during read; data may be incomplete');
+        }
+      } catch (e) {
+        // rethrow to be caught by outer catch
+        throw e;
+      }
+
+      if (!hexContent) {
+        throw new Error('No data received from device');
+      }
+
+      // 受信データが 16 進のみで構成されているか簡易チェック
+      if (!/^[0-9a-fA-F\s]*$/.test(hexContent)) {
+        // もし中間にプロンプトやエラーメッセージが混じっている場合はエラー扱いにする
+        throw new Error('Received non-hex data from device');
+      }
 
       // HEX形式をバイナリデータに変換
-      const binaryData = new Uint8Array(
-        hexContent.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
-      );
+      const hexPairs = hexContent.replace(/\s+/g, '').match(/.{1,2}/g) || [];
+      const binaryData = new Uint8Array(hexPairs.map((byte) => parseInt(byte, 16)));
       fileContent = binaryData;
 
+      // 正常終了: fileContent を返す
+      return fileContent;
     } catch (error) {
       console.error('Error reading file:', error);
+      // エラーは呼び出し側で扱いたいので再送出する
+      throw error;
     } finally {
       // ポートを解放
       await this.exitRawMode();
     }
-    // ファイル内容を返す
-    return fileContent;
   }
   
 /**

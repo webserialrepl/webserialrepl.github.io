@@ -23,6 +23,7 @@ export class SerialPortManager {
   private backgroundLoopRunning: boolean = false;
   private receiveBuffer: string = '';
   private lastTrimLogAt: number | null = null;
+  private receiveBufferTrimmed: boolean = false; // true when buffer was trimmed due to maxSize
   private waiters: Array<{ target: string; resolve: (s: string) => void; reject: (e: any) => void; maxSize?: number; }> = [];
   private terminalOutputCallback: ((chunk: string) => void) | null = null; // ターミナル出力のコールバック関数
   private isTerminalOutput: boolean = false; // ターミナル出力の状態を管理
@@ -31,6 +32,16 @@ export class SerialPortManager {
 
   constructor(callback: ((chunk: string) => void) | null = null) {
     this.terminalOutputCallback = callback;
+  }
+
+  /**
+   * Return whether the receive buffer was trimmed since last check and clear the flag.
+   * Callers should call this right after a startReadLoop resolves to detect data loss.
+   */
+  public consumeTrimFlag(): boolean {
+    const v = this.receiveBufferTrimmed;
+    this.receiveBufferTrimmed = false;
+    return v;
   }
 
   // 初期化処理をまとめたメソッド
@@ -348,6 +359,8 @@ export class SerialPortManager {
           currentMax = this.waiters.reduce((m, w) => Math.max(m, w.maxSize ?? DEFAULT_MAX_RESULT), DEFAULT_MAX_RESULT);
         }
         if (this.receiveBuffer.length > currentMax) {
+          // Mark that we trimmed the buffer so callers can detect data loss
+          this.receiveBufferTrimmed = true;
           this.receiveBuffer = this.receiveBuffer.slice(this.receiveBuffer.length - currentMax);
           // Rate-limit trim logs to avoid spamming the console
           const now = Date.now();

@@ -105,6 +105,9 @@ export class FileManager {
       return text;
     } catch (error) {
       console.error(`Error reading file ${filename}:`, error);
+      try {
+        this.terminal.logToTerminal(`Error reading file "${filename}": ${String(error)}`, 'error');
+      } catch {}
       return null;
     }
   }

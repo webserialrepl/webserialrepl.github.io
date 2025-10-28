@@ -35,10 +35,13 @@ export class TabManager {
     // ファイルの読み込みが成功したら内容をアップデート
     var content = '';
     try {
-      content = await this.filemgr.fileRead(name);
+      const readResult = await this.filemgr.fileRead(name);
+      // If readResult is null (error), do not display file contents
+      content = readResult == null ? '' : readResult;
     } catch (error) {
-      content = `# ${Date.now()}.py : ${error}`;
-      console.warn(content);
+      // If an unexpected exception bubbles up, keep editor empty and log
+      content = '';
+      console.warn(`Failed to read file ${name}:`, error);
     }
     const model = monaco.editor.createModel(content, 'python');
     model.setEOL(monaco.editor.EndOfLineSequence.LF); // 改行コードを LF に設定

@@ -49,7 +49,8 @@ document.addEventListener('DOMContentLoaded', () => {
   buildInfo.textContent = `Build Number: ${__BUILD_NUMBER__}`;
   buildInfo.style.position = 'absolute';
   buildInfo.style.bottom = '10px';
-  buildInfo.style.right = '10px';
+  // Move the build-number slightly left (~2 characters) from the right edge
+  buildInfo.style.right = 'calc(10px + 2ch)';
   buildInfo.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
   buildInfo.style.color = 'white';
   buildInfo.style.padding = '5px 10px';

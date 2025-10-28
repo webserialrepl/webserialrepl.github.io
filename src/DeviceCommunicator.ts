@@ -8,8 +8,8 @@ export class DeviceCommunicator {
   }
 
 
-  private async startReadLoop(targetString: string | false): Promise<string> {
-    return await this.serial.startReadLoop(targetString, false);
+  private async startReadLoop(targetString: string | false, options?: { maxSize?: number }): Promise<string> {
+    return await this.serial.startReadLoop(targetString, false, options);
   }
 
 
@@ -140,10 +140,11 @@ public async readFile(filename: string): Promise<Uint8Array> {
       // console.log('wait >OK....');
       await this.startReadLoop('>OK'); // >OK を待つ
 
-      // ファイル内容を取得（HEX形式で受信）
-      // this.isTerminalOutput = false;
-      const hexContent = await this.startReadLoop('\x04'); // CTRL+D を待つ
-      this.startReadLoop(false); // データを処理する関数を呼び出す
+  // ファイル内容を取得（HEX形式で受信）
+  // this.isTerminalOutput = false;
+  // readFile can return a large amount of data — request a larger maxSize (500KB)
+  const hexContent = await this.startReadLoop('\x04', { maxSize: 500000 }); // CTRL+D を待つ
+  this.startReadLoop(false); // データを処理する関数を呼び出す
       // console.log('Received HEX content:', hexContent);
 
       // HEX形式をバイナリデータに変換

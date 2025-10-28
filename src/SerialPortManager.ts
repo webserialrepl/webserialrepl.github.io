@@ -4,6 +4,7 @@ export interface PortOption extends HTMLOptionElement {
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const DEFAULT_MAX_RESULT = 10000;
 function log(msg: string): void {
   // const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
   console.log(msg);
@@ -21,7 +22,8 @@ export class SerialPortManager {
   // 単一バックグラウンドループ用の状態
   private backgroundLoopRunning: boolean = false;
   private receiveBuffer: string = '';
-  private waiters: Array<{ target: string; resolve: (s: string) => void; reject: (e: any) => void; }> = [];
+  private lastTrimLogAt: number | null = null;
+  private waiters: Array<{ target: string; resolve: (s: string) => void; reject: (e: any) => void; maxSize?: number; }> = [];
   private terminalOutputCallback: ((chunk: string) => void) | null = null; // ターミナル出力のコールバック関数
   private isTerminalOutput: boolean = false; // ターミナル出力の状態を管理
   private leftoverData: string = ''; // 未処理のデータを保持
@@ -231,7 +233,7 @@ export class SerialPortManager {
    * シリアルポートからデータを読み取り、処理する
    * @param {ReadableStreamDefaultReader} reader - シリアルポートのリーダー
    */
-  public async startReadLoop(targetString: string | false = false, command:any): Promise<string> {
+  public async startReadLoop(targetString: string | false = false, command:any, options?: { maxSize?: number }): Promise<string> {
     // 既にバックグラウンドループを走らせるようにしておき、
     // targetString が指定された場合は waiter を登録して待機する動作に変更します。
 
@@ -254,7 +256,8 @@ export class SerialPortManager {
 
     // targetString が指定されたら waiter を作成して待つ
     return await new Promise<string>((resolve, reject) => {
-      this.waiters.push({ target: targetString, resolve, reject });
+      const maxSize = options?.maxSize ?? DEFAULT_MAX_RESULT;
+      this.waiters.push({ target: targetString as string, resolve, reject, maxSize });
     });
   }
 
@@ -285,7 +288,15 @@ export class SerialPortManager {
         // console.log(new Date().toISOString(), 'RX HEX:', Array.from(value).map(b => b.toString(16).padStart(2,'0')).join(' '));
 
         // 受信バッファに追加
-        this.receiveBuffer += chunk;
+        // - waiters が存在する場合は全文を蓄積して target 検出に備える
+        // - waiters がない場合は、プロンプト検出等のために短めのスライディングウィンドウだけ保持する
+        if (this.waiters.length > 0) {
+          this.receiveBuffer += chunk;
+        } else {
+          // keep only small tail to avoid unbounded growth when no waiters
+          const TAIL_SIZE = 512; // chars
+          this.receiveBuffer = (this.receiveBuffer + chunk).slice(-TAIL_SIZE);
+        }
 
         // REPL プロンプト判定
         const lastSixChars = this.receiveBuffer.slice(-6);
@@ -331,11 +342,19 @@ export class SerialPortManager {
             matched = true;
           }
         }
-  // バッファ制限
-        const maxResultSize = 10000;
-        if (this.receiveBuffer.length > maxResultSize) {
-          this.receiveBuffer = this.receiveBuffer.slice(this.receiveBuffer.length - maxResultSize);
-          console.error('Receive buffer exceeded maximum limit. Trimming...');
+        // バッファ制限: waiters が居る場合は各 waiter の maxSize を参照して上限を決定
+        let currentMax = DEFAULT_MAX_RESULT;
+        if (this.waiters.length > 0) {
+          currentMax = this.waiters.reduce((m, w) => Math.max(m, w.maxSize ?? DEFAULT_MAX_RESULT), DEFAULT_MAX_RESULT);
+        }
+        if (this.receiveBuffer.length > currentMax) {
+          this.receiveBuffer = this.receiveBuffer.slice(this.receiveBuffer.length - currentMax);
+          // Rate-limit trim logs to avoid spamming the console
+          const now = Date.now();
+          if (!this.lastTrimLogAt || now - this.lastTrimLogAt > 5000) {
+            this.lastTrimLogAt = now;
+            console.warn('Receive buffer exceeded maximum limit. Trimming...');
+          }
         }
       }
     } catch (error) {

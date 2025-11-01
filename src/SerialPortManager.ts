@@ -29,9 +29,38 @@ export class SerialPortManager {
   private isTerminalOutput: boolean = false; // ターミナル出力の状態を管理
   private leftoverData: string = ''; // 未処理のデータを保持
   private replStatus: 'REPL' | 'RUNNING' | null = null;
+  private debugLogging: boolean = false;
 
   constructor(callback: ((chunk: string) => void) | null = null) {
     this.terminalOutputCallback = callback;
+  }
+
+  // Enable or disable extra debug logging at runtime
+  public enableDebugLogging(enabled: boolean = true): void {
+    this.debugLogging = enabled;
+    console.log(`SerialPortManager: debugLogging=${enabled}`);
+  }
+
+  // Dump internal status useful for debugging connection issues
+  public dumpStatus(): Record<string, any> {
+    const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : 'n/a';
+    const isChromebook = ua.includes('CrOS') || ua.toLowerCase().includes('chromebook');
+    const status = {
+      userAgent: ua,
+      isChromebook,
+      hasPort: !!this.serialPort,
+      readableLocked: (this.serialPort?.readable as any)?.locked ?? null,
+      writableLocked: (this.serialPort?.writable as any)?.locked ?? null,
+      backgroundLoopRunning: this.backgroundLoopRunning,
+      reading: this.reading,
+      serialReader: !!this.serialReader,
+      serialWriter: !!this.serialWriter,
+      receiveBufferLen: this.receiveBuffer.length,
+      waiters: this.waiters.length,
+      replStatus: this.replStatus,
+    };
+    console.log('SerialPortManager.dumpStatus:', status);
+    return status;
   }
 
   /**
@@ -136,10 +165,19 @@ export class SerialPortManager {
     this.replStatus = null; // REPLステータスを初期化
 
     try {
+      if (this.debugLogging) console.log('SerialPortManager: navigator.userAgent=', typeof navigator !== 'undefined' ? navigator.userAgent : 'n/a');
       const port = await navigator.serial.requestPort();
       this.serialPort = port;
       const baudRate = 115200;
       await port.open({ baudRate });
+      if (this.debugLogging) {
+        console.log('SerialPortManager: port opened');
+        try {
+          console.log('readable.locked=', (port.readable as any)?.locked, 'writable.locked=', (port.writable as any)?.locked);
+        } catch (e) {
+          console.log('SerialPortManager: error reading lock state', e);
+        }
+      }
       await new Promise(r => setTimeout(r, 300));
       console.log('<CONNECTED>', port);
       this.isTerminalOutput = true;
@@ -165,7 +203,7 @@ export class SerialPortManager {
     this.reading = false;
     if (this.serialReader) {
       try { await this.serialReader.cancel(); } catch {}
-      try { this.serialReader.releaseLock(); } catch {}
+      try { this.serialReader.releaseLock(); } catch (e) { if (this.debugLogging) console.log('releaseLock reader error', e); }
       this.serialReader = null;
     }
   }
@@ -180,6 +218,9 @@ export class SerialPortManager {
     const reader = this.serialReader;
     if (!reader) {
         throw new Error('Reader is not available.');
+    }
+    if (this.debugLogging) {
+      try { console.log('streamRead: reader present, locked=', (this.serialPort?.readable as any)?.locked); } catch(e){}
     }
     const { value, done } = await reader.read();
     //console.log('Received chunk:', value, done); // デバッグ用
@@ -208,13 +249,12 @@ export class SerialPortManager {
         return;
       }
       try {
+        if (this.debugLogging) console.log('send(): writable present, writable.locked=', (this.serialPort?.writable as any)?.locked);
         const writer = this.serialPort.writable.getWriter();
         const packet = encoder.encode(data);
         await writer.write(packet);
-        // Don't close the writable stream here. Closing the writer can
-        // close the underlying stream on some Chromium builds (Chromebook),
-        // causing further communication to fail. Just release the lock.
-        try { writer.releaseLock(); } catch (e) { /* ignore */ }
+        if (this.debugLogging) console.log('send(): write completed, releasing lock');
+        try { writer.releaseLock(); } catch (e) { if (this.debugLogging) console.log('send: releaseLock error', e); }
         log(`TX(${packet.length}B): ${JSON.stringify(data)}`);
       } catch (err) {
         log(`送信エラー: ${err}`);
@@ -228,11 +268,13 @@ export class SerialPortManager {
         return;
       }
       try {
+        if (this.debugLogging) console.log('sendControl(): writable.locked=', (this.serialPort?.writable as any)?.locked);
         // Use a fresh writer for this control byte, then release the lock.
         const writer = this.serialPort.writable.getWriter();
         const packet = new Uint8Array([asciiCode]); // バイナリ直接
         await writer.write(packet);
-        try { writer.releaseLock(); } catch (e) { /* ignore */ }
+        if (this.debugLogging) console.log('sendControl(): wrote control byte, releasing lock');
+        try { writer.releaseLock(); } catch (e) { if (this.debugLogging) console.log('sendControl: releaseLock error', e); }
         log(`TX control: 0x${asciiCode.toString(16).padStart(2, '0')}`);
       } catch (err) {
         log(`送信エラー: ${err}`);

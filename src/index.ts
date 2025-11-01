@@ -59,8 +59,10 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-// SerialPortManager と 
+// SerialPortManager と
 const serialPortManager = new SerialPortManager(repl_terminal_write);
+// Expose instance for debugging in DevTools (e.g. enableDebugLogging / dumpStatus)
+(window as any).serialPortManager = serialPortManager;
 
 // DeviceCommunicator のインスタンスを作成
 const device = new DeviceCommunicator(serialPortManager);

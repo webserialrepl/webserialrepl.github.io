@@ -112,9 +112,11 @@ export class SerialPortManager {
         this.serialReader.releaseLock();
         this.serialReader = null;
       }
+      // If we had stored a persistent writer, just release it; do NOT close
+      // the underlying writable stream here — closing can make the port
+      // unusable on some platforms (notably Chromebook).
       if (this.serialWriter) {
-        await this.serialWriter.close();
-        this.serialWriter.releaseLock();
+        try { this.serialWriter.releaseLock(); } catch (e) { /* ignore */ }
         this.serialWriter = null;
       }
       if (localPort) {
@@ -209,8 +211,10 @@ export class SerialPortManager {
         const writer = this.serialPort.writable.getWriter();
         const packet = encoder.encode(data);
         await writer.write(packet);
-        await writer.close();
-        writer.releaseLock();
+        // Don't close the writable stream here. Closing the writer can
+        // close the underlying stream on some Chromium builds (Chromebook),
+        // causing further communication to fail. Just release the lock.
+        try { writer.releaseLock(); } catch (e) { /* ignore */ }
         log(`TX(${packet.length}B): ${JSON.stringify(data)}`);
       } catch (err) {
         log(`送信エラー: ${err}`);
@@ -224,16 +228,11 @@ export class SerialPortManager {
         return;
       }
       try {
-        let writer = this.serialWriter;
-        if (!writer) {
-          writer = this.serialPort.writable.getWriter();
-        }
-        //console.log("send:", port, writer)
+        // Use a fresh writer for this control byte, then release the lock.
+        const writer = this.serialPort.writable.getWriter();
         const packet = new Uint8Array([asciiCode]); // バイナリ直接
         await writer.write(packet);
-        await writer.close();
-        writer.releaseLock();
-        writer = null;
+        try { writer.releaseLock(); } catch (e) { /* ignore */ }
         log(`TX control: 0x${asciiCode.toString(16).padStart(2, '0')}`);
       } catch (err) {
         log(`送信エラー: ${err}`);

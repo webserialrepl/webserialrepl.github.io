@@ -61,8 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // SerialPortManager と
 const serialPortManager = new SerialPortManager(repl_terminal_write);
-// Expose instance for debugging in DevTools (e.g. enableDebugLogging / dumpStatus)
-(window as any).serialPortManager = serialPortManager;
+// (debug) previously exposed serialPortManager on window for troubleshooting; removed in production
 
 // DeviceCommunicator のインスタンスを作成
 const device = new DeviceCommunicator(serialPortManager);

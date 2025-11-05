@@ -29,38 +29,10 @@ export class SerialPortManager {
   private isTerminalOutput: boolean = false; // ターミナル出力の状態を管理
   private leftoverData: string = ''; // 未処理のデータを保持
   private replStatus: 'REPL' | 'RUNNING' | null = null;
-  private debugLogging: boolean = false;
+
 
   constructor(callback: ((chunk: string) => void) | null = null) {
     this.terminalOutputCallback = callback;
-  }
-
-  // Enable or disable extra debug logging at runtime
-  public enableDebugLogging(enabled: boolean = true): void {
-    this.debugLogging = enabled;
-    console.log(`SerialPortManager: debugLogging=${enabled}`);
-  }
-
-  // Dump internal status useful for debugging connection issues
-  public dumpStatus(): Record<string, any> {
-    const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : 'n/a';
-    const isChromebook = ua.includes('CrOS') || ua.toLowerCase().includes('chromebook');
-    const status = {
-      userAgent: ua,
-      isChromebook,
-      hasPort: !!this.serialPort,
-      readableLocked: (this.serialPort?.readable as any)?.locked ?? null,
-      writableLocked: (this.serialPort?.writable as any)?.locked ?? null,
-      backgroundLoopRunning: this.backgroundLoopRunning,
-      reading: this.reading,
-      serialReader: !!this.serialReader,
-      serialWriter: !!this.serialWriter,
-      receiveBufferLen: this.receiveBuffer.length,
-      waiters: this.waiters.length,
-      replStatus: this.replStatus,
-    };
-    console.log('SerialPortManager.dumpStatus:', status);
-    return status;
   }
 
   /**
@@ -113,7 +85,7 @@ export class SerialPortManager {
         await this.serialPort.close();
       }
     } catch (err) {
-      log(`クローズ時エラー: ${err}`);
+      console.error(`クローズ時エラー: ${err}`);
     } finally {
       this.serialPort = undefined;
       this.setUiDisconnected();
@@ -165,24 +137,63 @@ export class SerialPortManager {
     this.replStatus = null; // REPLステータスを初期化
 
     try {
-      if (this.debugLogging) console.log('SerialPortManager: navigator.userAgent=', typeof navigator !== 'undefined' ? navigator.userAgent : 'n/a');
       const port = await navigator.serial.requestPort();
       this.serialPort = port;
       const baudRate = 115200;
       await port.open({ baudRate });
-      if (this.debugLogging) {
-        console.log('SerialPortManager: port opened');
-        try {
-          console.log('readable.locked=', (port.readable as any)?.locked, 'writable.locked=', (port.writable as any)?.locked);
-        } catch (e) {
-          console.log('SerialPortManager: error reading lock state', e);
-        }
-      }
+      
       await new Promise(r => setTimeout(r, 300));
       console.log('<CONNECTED>', port);
       this.isTerminalOutput = true;
-      this.startReadLoop(false, 0x03); // await は無し
-      
+
+      // After opening the port, attempt to reset the board (if supported)
+      // and send multiple Ctrl-C to try to enter REPL mode. Then start
+      // the background read loop and wait briefly for the prompt.
+      try {
+        // Soft reset via DTR/RTS if supported
+        if ((port as any).setSignals) {
+          try {
+            console.log('[INFO] ESP32: sending reset signals (RTS/DTR)');
+            await (port as any).setSignals({ dataTerminalReady: false, requestToSend: true });
+            await new Promise(r => setTimeout(r, 100));
+            await (port as any).setSignals({ dataTerminalReady: true, requestToSend: false });
+            await new Promise(r => setTimeout(r, 500));
+            console.log('[INFO] Reset signals sent');
+          } catch (e) {
+            console.warn('[WARN] setSignals failed or not supported:', e);
+          }
+        }
+
+        // Send multiple CTRL-C to interrupt any running program and return to REPL
+        console.log('[INFO] Sending multiple CTRL-C to enter REPL');
+        try {
+          for (let i = 0; i < 3; i++) {
+            await this.sendControl(0x03);
+            await new Promise(r => setTimeout(r, 100));
+          }
+          console.log('[INFO] CTRL-C sequence sent');
+        } catch (e) {
+          console.warn('[WARN] Failed to send CTRL-C sequence:', e);
+        }
+
+        // Start background read loop (fire-and-forget)
+        this.startReadLoop(false, undefined);
+
+        // Wait for REPL prompt '>>>' with a timeout
+        try {
+          const replPromise = this.startReadLoop('>>>', undefined, { maxSize: 512 });
+          await Promise.race([
+            replPromise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('REPL wait timeout')), 5000)),
+          ]);
+          console.log('[SUCCESS] REPL prompt detected');
+        } catch (e) {
+          console.warn('[WARN] REPL prompt not detected within timeout:', e);
+        }
+      } catch (e) {
+        console.error('[ERROR] REPL initialization sequence failed:', e);
+      }
+
       port.addEventListener?.('disconnect', this.onDisconnect);
 
       if (this.connectButton) {
@@ -203,7 +214,7 @@ export class SerialPortManager {
     this.reading = false;
     if (this.serialReader) {
       try { await this.serialReader.cancel(); } catch {}
-      try { this.serialReader.releaseLock(); } catch (e) { if (this.debugLogging) console.log('releaseLock reader error', e); }
+      try { this.serialReader.releaseLock(); } catch (e) { /* ignore */ }
       this.serialReader = null;
     }
   }
@@ -219,12 +230,7 @@ export class SerialPortManager {
     if (!reader) {
         throw new Error('Reader is not available.');
     }
-    if (this.debugLogging) {
-      try { console.log('streamRead: reader present, locked=', (this.serialPort?.readable as any)?.locked); } catch(e){}
-    }
     const { value, done } = await reader.read();
-    //console.log('Received chunk:', value, done); // デバッグ用
-    console.log('Received chunk:', value?.length, done); // デバッグ用
     return { value, done };
   }
 
@@ -249,15 +255,13 @@ export class SerialPortManager {
         return;
       }
       try {
-        if (this.debugLogging) console.log('send(): writable present, writable.locked=', (this.serialPort?.writable as any)?.locked);
-        const writer = this.serialPort.writable.getWriter();
+  const writer = this.serialPort.writable.getWriter();
         const packet = encoder.encode(data);
         await writer.write(packet);
-        if (this.debugLogging) console.log('send(): write completed, releasing lock');
-        try { writer.releaseLock(); } catch (e) { if (this.debugLogging) console.log('send: releaseLock error', e); }
+  try { writer.releaseLock(); } catch (e) { /* ignore */ }
         log(`TX(${packet.length}B): ${JSON.stringify(data)}`);
       } catch (err) {
-        log(`送信エラー: ${err}`);
+        console.error(`送信エラー: ${err}`);
       }
     }
 
@@ -268,16 +272,14 @@ export class SerialPortManager {
         return;
       }
       try {
-        if (this.debugLogging) console.log('sendControl(): writable.locked=', (this.serialPort?.writable as any)?.locked);
-        // Use a fresh writer for this control byte, then release the lock.
+  // Use a fresh writer for this control byte, then release the lock.
         const writer = this.serialPort.writable.getWriter();
         const packet = new Uint8Array([asciiCode]); // バイナリ直接
         await writer.write(packet);
-        if (this.debugLogging) console.log('sendControl(): wrote control byte, releasing lock');
-        try { writer.releaseLock(); } catch (e) { if (this.debugLogging) console.log('sendControl: releaseLock error', e); }
+  try { writer.releaseLock(); } catch (e) { /* ignore */ }
         log(`TX control: 0x${asciiCode.toString(16).padStart(2, '0')}`);
       } catch (err) {
-        log(`送信エラー: ${err}`);
+        console.error(`送信エラー: ${err}`);
       }
     }
 

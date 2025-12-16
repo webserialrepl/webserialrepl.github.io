@@ -70,7 +70,7 @@ const device = new DeviceCommunicator(serialPortManager);
 // スクロールバックバッファを 10,000 行に設定。
 const repl_terminal = new ReplTerminal(
   {
-    disableStdin: true,   // 入力を画面に直接描画しない
+    //disableStdin: true,   // 入力を画面に直接描画しない
     cursorBlink: true,
     scrollback: 1000, // スクロールバックバッファを1000行に制限
   }, // ターミナルのオプション

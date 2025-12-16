@@ -27,11 +27,28 @@ export class ReplTerminal extends Terminal {
 
     // データ入力イベントをリッスンし、デバイスにコマンドを送信。
     this.onData(async (data) => {
-      //console.log('Data received:', data);
-      // デバイスにデータを送信
       try {
+        // Backspaceキー（DELやBS）
+        if (data === '\x7f' || data === '\x08') {
+          // デバイスがバックスペースを理解するなら送信
+          // ターミナル表示を補正（1文字消す）
+          this.write('\b \b');
+          console.log('Backspace sent to device');
+
+          } else if (data === '\x1b[D') {
+          // 左矢印
+          // デバイスに送るかどうかは仕様次第
+          // 画面上でカーソルを左に移動
+          this.write('\x1b[D');
+        } else if (data === '\x1b[C') {
+          // 右矢印
+          this.write('\x1b[C');
+        } else {
+        // その他の通常文字
+
+        }
         await this.device.writeDevice(data);
-        console.log('Data sent to device:', data);
+
       } catch (error) {
         console.error('Error writing to device:', error);
       }

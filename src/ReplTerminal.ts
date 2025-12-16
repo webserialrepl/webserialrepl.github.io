@@ -25,64 +25,9 @@ export class ReplTerminal extends Terminal {
     // DeviceCommunicator を保存
     this.device = device;
 
-    /*
-    // onKey をこのクラスの中で定義
-    this.onKey(({ key, domEvent }) => {
-      // 通常文字だけエコー
-      if (
-        !domEvent.altKey &&
-        !domEvent.ctrlKey &&
-        !domEvent.metaKey &&
-        domEvent.key.length === 1
-      ) {
-        this.write(key);
-      } else {
-        // 特殊キーは必要に応じて処理
-        switch (domEvent.key) {
-          case 'Enter':
-            this.write('\r\n');
-            break;
-          case 'Backspace':
-            this.write('\b \b');
-            break;
-          default:
-            // 矢印キーなどは無視
-            break;
-        }
-      }
-    });
-
-    // データ入力イベントをリッスンし、デバイスにコマンドを送信。
+    // ターミナルのキー入力をデバイスに送信
     this.onData(async (data) => {
       try {
-        console.log('onData:', data);
-        await this.device.writeDevice(data);   // REPLに送信
-        if (data === '\x7f' || data === '\x08') {
-          // Backspace
-          //this.write('\b \b');          // 表示補正
-          //await this.device.writeDevice('\x08'); // REPLに送信
-        } else if (data === '\r' || data === '\n') {
-          // Enter
-          //this.write('\r\n');           // 表示補正
-          //await this.device.writeDevice('\r');   // REPLに送信
-        } else if (data === '\x1b[D') {
-          // 左矢印 → REPLには送らない
-          //this.write('\x1b[D');         // ターミナル上だけカーソル移動
-        } else if (data === '\x1b[C') {
-          // 右矢印 → REPLには送らない
-          //this.write('\x1b[C');
-        } else {
-          // 通常文字
-          //this.write(data);             // エコーバック
-        }
-      } catch (error) {
-        console.error('Error writing to device:', error);
-      }
-    });
-    */
-    this.onData(async (data) => {
-      try {
-        console.log('onData:', data);
         await this.device.writeDevice(data);
       } catch (error) {
         console.error('Error writing to device:', error);

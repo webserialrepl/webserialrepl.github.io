@@ -363,7 +363,12 @@ export class SerialPortManager {
         // UI 出力
         if (this.isTerminalOutput && this.terminalOutputCallback) {
           const sanitizedChunk = chunk.replace(/[^\x20-\x7E\u3000-\u9FFF\uFF00-\uFFEF\r\n]/g, '');
-          this.terminalOutputCallback(sanitizedChunk);
+          //this.terminalOutputCallback(sanitizedChunk);
+          this.terminalOutputCallback(chunk);
+          // 変化があった場合だけログ出力
+          if (sanitizedChunk !== chunk) {
+            console.log("terminalOutputCallback:", chunk);
+          }
         }
 
         // waiters をチェックして最も早くマッチするものを解決

@@ -25,6 +25,7 @@ export class ReplTerminal extends Terminal {
     // DeviceCommunicator を保存
     this.device = device;
 
+    /*
     // onKey をこのクラスの中で定義
     this.onKey(({ key, domEvent }) => {
       // 通常文字だけエコー
@@ -78,34 +79,15 @@ export class ReplTerminal extends Terminal {
         console.error('Error writing to device:', error);
       }
     });
-/*
+    */
     this.onData(async (data) => {
       try {
-        // Backspaceキー（DELやBS）
-        if (data === '\x7f' || data === '\x08') {
-          // デバイスがバックスペースを理解するなら送信
-          // ターミナル表示を補正（1文字消す）
-          this.write('\b \b');
-          console.log('Backspace sent to device');
-
-          } else if (data === '\x1b[D') {
-          // 左矢印
-          // デバイスに送るかどうかは仕様次第
-          // 画面上でカーソルを左に移動
-          this.write('\x1b[D');
-        } else if (data === '\x1b[C') {
-          // 右矢印
-          this.write('\x1b[C');
-        } else {
-          // その他の通常文字
-          this.write(data); // エコーバック
-        }
+        console.log('onData:', data);
         await this.device.writeDevice(data);
       } catch (error) {
         console.error('Error writing to device:', error);
       }
     });
-*/
 
   }
 

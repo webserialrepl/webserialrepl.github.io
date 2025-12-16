@@ -60,6 +60,16 @@ export class FileManager {
     saveFileButton.disabled = true;
     newFileButton.disabled = true;
     runCodeButton.disabled = true;
+
+    // 既存のファイルツリーを安全にクリア（要素が存在する場合のみ）
+    const filetreeElement = document.getElementById('file-tree');
+    if (filetreeElement) {
+      // innerHTML を直接上書きする代わりに子ノードを削除して安全性を高める
+      while (filetreeElement.firstChild) {
+        filetreeElement.removeChild(filetreeElement.firstChild);
+      }
+    }
+    this.fileTreeDisplayed = false; // ファイルツリーが表示されているかどうか
   }
 
   /**
@@ -95,6 +105,9 @@ export class FileManager {
       return text;
     } catch (error) {
       console.error(`Error reading file ${filename}:`, error);
+      try {
+        this.terminal.logToTerminal(`Error reading file "${filename}": ${String(error)}`, 'error');
+      } catch {}
       return null;
     }
   }

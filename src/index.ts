@@ -49,7 +49,8 @@ document.addEventListener('DOMContentLoaded', () => {
   buildInfo.textContent = `Build Number: ${__BUILD_NUMBER__}`;
   buildInfo.style.position = 'absolute';
   buildInfo.style.bottom = '10px';
-  buildInfo.style.right = '10px';
+  // Move the build-number slightly left (~2 characters) from the right edge
+  buildInfo.style.right = 'calc(10px + 2ch)';
   buildInfo.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
   buildInfo.style.color = 'white';
   buildInfo.style.padding = '5px 10px';
@@ -58,8 +59,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-// SerialPortManager と 
+// SerialPortManager と
 const serialPortManager = new SerialPortManager(repl_terminal_write);
+// (debug) previously exposed serialPortManager on window for troubleshooting; removed in production
 
 // DeviceCommunicator のインスタンスを作成
 const device = new DeviceCommunicator(serialPortManager);

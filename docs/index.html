@@ -15,7 +15,7 @@
       box-sizing: border-box;
     }
     #terminal {
-      height: 15em; /* 15行分の高さ */
+      height: 14em; /* 14行分の高さ（1行分減らす） */
       overflow-y: auto; /* 縦方向のスクロールを有効にする */
       border: 1px solid #ccc; /* 境界線を追加 */
     }
@@ -27,6 +27,29 @@
     }
     #connect {
       margin-right: 2em;
+    }
+    /* ターミナルのスクロールバーを太く見せるカスタムスタイル
+       - WebKit (Chromium, Safari): 幅を px 指定
+       - Firefox: scrollbar-width と scrollbar-color で見た目を調整
+       - xterm の内部ビューポートにも適用 */
+    #terminal,
+    .xterm .xterm-viewport {
+      scrollbar-width: auto; /* Firefox: autoにして太さはブラウザ基準に任せる */
+      scrollbar-color: #888 #f1f1f1; /* thumb color / track color */
+    }
+    #terminal::-webkit-scrollbar,
+    .xterm .xterm-viewport::-webkit-scrollbar {
+      width: 12px; /* 太さを指定 */
+    }
+    #terminal::-webkit-scrollbar-thumb,
+    .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 6px;
+      border: 3px solid #f1f1f1; /* トラックとの間に余白を作る見た目 */
+    }
+    #terminal::-webkit-scrollbar-track,
+    .xterm .xterm-viewport::-webkit-scrollbar-track {
+      background: #f1f1f1;
     }
     label.checkbox {
       margin-right: 1em;
@@ -96,7 +119,8 @@
     #editor-panel {
       flex: 1;
       width: 100%;
-      height: 400px;
+      /* 下を約1行分（おおよそタブバーの高さ 1.2em）短くする */
+      height: calc(400px - 1.2em);
     }
 #tab-bar {
   height: 1.2em;
@@ -129,13 +153,15 @@
   z-index: 1;
 }
     #editor {
-      width: 100%;
+      /* 右側を約1文字分だけ狭める（1ch = 幅1文字分） */
+      width: calc(100% - 1ch);
       height: 100%;
       border: 1px solid #ccc;
+      box-sizing: border-box;
     }
 
   </style>
-  <script type="module" crossorigin src="./assets/index.a71393cf.js"></script>
+  <script type="module" crossorigin src="./assets/index.249327d1.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/monaco-editor.6e4fa376.js">
   <link rel="stylesheet" href="./assets/monaco-editor.44e2f341.css">
   <link rel="stylesheet" href="./assets/index.ff373be6.css">

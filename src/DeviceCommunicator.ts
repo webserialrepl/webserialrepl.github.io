@@ -193,7 +193,7 @@ public async getPyFileList(): Promise<string[]> {
       await this.enterRawMode(); // CTRL+A
       await this.write('import os\r');
       // await this.write('print(os.listdir())\r');
-      await this.write('[name for name in os.listdir() if not (os.stat(name)[0] & 0x4000)]\r'); // ディレクトリを除外したリストを表示
+      await this.write('print([name for name in os.listdir() if not (os.stat(name)[0] & 0x4000)])\r'); // ディレクトリを除外したリストを表示
       await this.serial.sendControl(0x04); // CTRL+D
       console.log('Command sent:');
   

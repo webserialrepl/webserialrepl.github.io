@@ -78,7 +78,7 @@ export class FileManager {
   async fileList(): Promise<void> {
     const filetree = document.getElementById('file-tree');
     if (!filetree) return;
-    this.files = await this.device.getPyFileList();
+    this.files = await this.device.getFileList();
 
     filetree.innerHTML = ''; // 既存の項目をクリア
 

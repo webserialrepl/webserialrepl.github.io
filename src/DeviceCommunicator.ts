@@ -183,16 +183,15 @@ public async readFile(filename: string): Promise<Uint8Array> {
   }
   
 /**
- * デバイス上の .py ファイルの一覧を取得
+ * デバイス上のファイル一覧を取得
  * @return {Promise<string[]>} - ファイル名の配列
  */
-public async getPyFileList(): Promise<string[]> {
-    console.log('getPyFileList');
+public async getFileList(): Promise<string[]> {
+    console.log('getFileList');
     try {
       await this.resetReader();
       await this.enterRawMode(); // CTRL+A
       await this.write('import os\r');
-      // await this.write('print(os.listdir())\r');
       await this.write('print([name for name in os.listdir() if not (os.stat(name)[0] & 0x4000)])\r'); // ディレクトリを除外したリストを表示
       await this.serial.sendControl(0x04); // CTRL+D
       console.log('Command sent:');
@@ -212,7 +211,6 @@ public async getPyFileList(): Promise<string[]> {
       const files = result
         .replace(/[\[\]'\s]/g, '') // 角括弧、シングルクォート、空白を削除
         .split(',') // カンマで分割
-        // .filter((file) => file.endsWith('.py') || file.endsWith('.txt')); // .py または .txt ファイルを抽出
   
       return files;
     } catch (error) {

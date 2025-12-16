@@ -28,14 +28,16 @@ export class ReplTerminal extends Terminal {
     // データ入力イベントをリッスンし、デバイスにコマンドを送信。
     this.onData(async (data) => {
       try {
+        console.log('onData:', data);
+        await this.device.writeDevice(data);   // REPLに送信
         if (data === '\x7f' || data === '\x08') {
           // Backspace
           this.write('\b \b');          // 表示補正
-          await this.device.writeDevice('\x08'); // REPLに送信
+          //await this.device.writeDevice('\x08'); // REPLに送信
         } else if (data === '\r' || data === '\n') {
           // Enter
           this.write('\r\n');           // 表示補正
-          await this.device.writeDevice('\r');   // REPLに送信
+          //await this.device.writeDevice('\r');   // REPLに送信
         } else if (data === '\x1b[D') {
           // 左矢印 → REPLには送らない
           this.write('\x1b[D');         // ターミナル上だけカーソル移動
@@ -45,7 +47,6 @@ export class ReplTerminal extends Terminal {
         } else {
           // 通常文字
           this.write(data);             // エコーバック
-          await this.device.writeDevice(data);   // REPLに送信
         }
       } catch (error) {
         console.error('Error writing to device:', error);

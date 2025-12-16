@@ -192,7 +192,8 @@ public async getPyFileList(): Promise<string[]> {
       await this.resetReader();
       await this.enterRawMode(); // CTRL+A
       await this.write('import os\r');
-      await this.write('print(os.listdir())\r');
+      // await this.write('print(os.listdir())\r');
+      await this.write('[name for name in os.listdir() if not (os.stat(name)[0] & 0x4000)]\r'); // ディレクトリを除外したリストを表示
       await this.serial.sendControl(0x04); // CTRL+D
       console.log('Command sent:');
   
@@ -211,7 +212,7 @@ public async getPyFileList(): Promise<string[]> {
       const files = result
         .replace(/[\[\]'\s]/g, '') // 角括弧、シングルクォート、空白を削除
         .split(',') // カンマで分割
-        .filter((file) => file.endsWith('.py') || file.endsWith('.txt')); // .py または .txt ファイルを抽出
+        // .filter((file) => file.endsWith('.py') || file.endsWith('.txt')); // .py または .txt ファイルを抽出
   
       return files;
     } catch (error) {

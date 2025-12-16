@@ -82,31 +82,6 @@ export class SerialPortManager {
     log('手動で切断しました');
   }
 
-
-  private async disconnectFromPort(): Promise<void> {
-    console.log('Disconnecting from port...');
-    const localPort = this.serialPort;
-    this.serialPort = undefined;
-    try {
-      if (this.serialReader) {
-        await this.serialReader.cancel();
-        this.serialReader.releaseLock();
-        this.serialReader = null;
-      }
-      if (this.serialWriter) {
-        await this.serialWriter.close();
-        this.serialWriter.releaseLock();
-        this.serialWriter = null;
-      }
-      if (localPort) {
-        await localPort.close();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    this.setUiDisconnected();
-  }
-
   private async connect(): Promise<void> {
 
     this.reading = false; // 読み取り中かどうかのフラグ

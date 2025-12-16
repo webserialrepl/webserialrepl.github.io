@@ -28,6 +28,32 @@ export class ReplTerminal extends Terminal {
     // データ入力イベントをリッスンし、デバイスにコマンドを送信。
     this.onData(async (data) => {
       try {
+        if (data === '\x7f' || data === '\x08') {
+          // Backspace
+          this.write('\b \b');          // 表示補正
+          await this.device.writeDevice('\x08'); // REPLに送信
+        } else if (data === '\r' || data === '\n') {
+          // Enter
+          this.write('\r\n');           // 表示補正
+          await this.device.writeDevice('\r');   // REPLに送信
+        } else if (data === '\x1b[D') {
+          // 左矢印 → REPLには送らない
+          this.write('\x1b[D');         // ターミナル上だけカーソル移動
+        } else if (data === '\x1b[C') {
+          // 右矢印 → REPLには送らない
+          this.write('\x1b[C');
+        } else {
+          // 通常文字
+          this.write(data);             // エコーバック
+          await this.device.writeDevice(data);   // REPLに送信
+        }
+      } catch (error) {
+        console.error('Error writing to device:', error);
+      }
+    });
+/*
+    this.onData(async (data) => {
+      try {
         // Backspaceキー（DELやBS）
         if (data === '\x7f' || data === '\x08') {
           // デバイスがバックスペースを理解するなら送信
@@ -44,15 +70,16 @@ export class ReplTerminal extends Terminal {
           // 右矢印
           this.write('\x1b[C');
         } else {
-        // その他の通常文字
-
+          // その他の通常文字
+          this.write(data); // エコーバック
         }
         await this.device.writeDevice(data);
-
       } catch (error) {
         console.error('Error writing to device:', error);
       }
     });
+*/
+
   }
 
   /**

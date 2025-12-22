@@ -155,3 +155,4 @@ document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {
 });
 // 初期状態で無効化
 stopButton.disabled = true;
+commands.emit('new'); // 最初に新規タブを開く

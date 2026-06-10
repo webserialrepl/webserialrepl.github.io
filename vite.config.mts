@@ -13,10 +13,13 @@ export default defineConfig(({ mode }) => {
   const isDev = env.VITE_ENV === 'develop';
 
   return {
-    base: isDev ? '/develop/' : '/',   // ★ repo root が webserialrepl.github.io のため
+    // gh-pages では develop は /develop/ に配置されるので base はこれでOK
+    base: isDev ? '/develop/' : '/',
+
     build: {
-      outDir: isDev ? 'dist' : 'docs', // ★ develop は dist に出す
+      outDir: 'dist',   // ★ 常に dist に出力（docs はもう使わない）
     },
+
     plugins: [
       tsconfigPaths(),
       VitePWA({
@@ -25,6 +28,7 @@ export default defineConfig(({ mode }) => {
         manifest: webmanifest,
       }),
     ],
+
     define: {
       __BUILD_NUMBER__: JSON.stringify(buildData.buildNumber),
     },

@@ -31,6 +31,9 @@ jobs:
           mkdir -p saved-dist
           cp -r dist/* saved-dist/
 
+      - name: Reset changes before switching to main
+        run: git reset --hard
+
       - name: Checkout main branch
         run: |
           git fetch origin main

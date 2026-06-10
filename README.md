@@ -38,3 +38,6 @@ npm run dev
 参考資料：
 https://micropython-docs-ja.readthedocs.io/ja/latest/reference/repl.html#raw-mode-and-raw-paste-mode
 https://g200kg.github.io/web-serial-api-ja/EXPLAINER.html
+
+
+develop ブランチを公開できるようにした。

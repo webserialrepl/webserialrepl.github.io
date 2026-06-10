@@ -26,6 +26,11 @@ jobs:
       - name: Build develop version
         run: npm run build -- --mode develop
 
+      - name: Save dist as artifact
+        run: |
+          mkdir -p saved-dist
+          cp -r dist/* saved-dist/
+
       - name: Checkout main branch
         run: |
           git fetch origin main
@@ -35,7 +40,7 @@ jobs:
         run: |
           rm -rf docs/develop
           mkdir -p docs/develop
-          cp -r dist/* docs/develop/
+          cp -r saved-dist/* docs/develop/
 
       - name: Commit and push changes
         run: |

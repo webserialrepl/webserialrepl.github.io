@@ -1,0 +1,46 @@
+name: Deploy develop to GitHub Pages
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout develop branch
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build develop version
+        run: npm run build -- --mode develop
+
+      - name: Checkout main branch
+        run: |
+          git fetch origin main
+          git checkout main
+
+      - name: Copy develop build into docs/develop
+        run: |
+          rm -rf docs/develop
+          mkdir -p docs/develop
+          cp -r dist/* docs/develop/
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add docs/develop
+          git commit -m "Update develop build" || echo "No changes to commit"
+          git push origin main

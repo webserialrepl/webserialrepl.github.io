@@ -40,4 +40,13 @@ https://micropython-docs-ja.readthedocs.io/ja/latest/reference/repl.html#raw-mod
 https://g200kg.github.io/web-serial-api-ja/EXPLAINER.html
 
 
-develop ブランチを公開できるようにした。
+develop ブランチのローカルでのビルド＆デバッグ
+```
+npm run build:dev     # build番号をインクリメントしてdistにビルド
+npm run preview:dev   # http://localhost:3000/develop/ 
+```
+
+develop ブランチをgithub(https://github.com/webserialrepl/webserialrepl.github.io)にプッシュすると、以下に公開される
+```
+https://webserialrepl.github.io/develop/
+```

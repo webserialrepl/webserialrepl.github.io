@@ -9,15 +9,21 @@ const buildNumberFile = path.resolve(__dirname, './build-number.json');
 const buildData = JSON.parse(fs.readFileSync(buildNumberFile, 'utf8'));
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd());
-  const isDev = env.VITE_ENV === 'develop';
+  // mode が 'develop' かどうかを直接判定（.env ファイルがなくても機能します）
+  const isDevMode = mode === 'develop';
 
   return {
-    // gh-pages では develop は /develop/ に配置されるので base はこれでOK
-    base: isDev ? '/develop/' : '/',
+    // gh-pages では develop は /develop/ に配置されるので、ベースパスを切り替え
+    base: isDevMode ? '/develop/' : '/',
 
     build: {
-      outDir: 'dist',   // ★ 常に dist に出力（docs はもう使わない）
+      outDir: 'dist',   // 常に dist に出力
+    },
+
+    // 💡 ローカルで dist をデバッグ（npm run preview:dev）する時のための設定を追加
+    preview: {
+      port: 3000,
+      strictPort: true,
     },
 
     plugins: [

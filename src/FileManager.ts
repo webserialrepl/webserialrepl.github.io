@@ -104,9 +104,12 @@ export class FileManager {
       const text = new TextDecoder('utf-8').decode(fileContent);
       return text;
     } catch (error) {
+      if (filename === "<無題>") {
+        return null;
+      }
       console.error(`Error reading file ${filename}:`, error);
       try {
-        this.terminal.logToTerminal(`Error reading file "${filename}": ${String(error)}`, 'error');
+        this.terminal.logToTerminal(`ファイル読込エラー:"${filename}": ${String(error)}`, 'error');
       } catch {}
       return null;
     }

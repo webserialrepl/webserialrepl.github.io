@@ -22,13 +22,13 @@ export class TabManager {
     // ファイル名が一覧にあるかチェック
     if (name!== '<無題>') {
       for (const tab of this.tabs) {
-        if (tab.name === name) {
+        if (tab.disp_name === name) {
           console.warn(`Tab with name "${name}" already exists.`);
           return;
         }
       }
     }
-    const newTab: TabState = { id: Date.now(), name, path: null, isModified: false, model: this.emp_model };
+    const newTab: TabState = { id: Date.now(), disp_name: name, file_path: null, isModified: false, model: this.emp_model };
     this.tabs.push(newTab);
     this.activeIndex = this.tabs.length - 1;
     this.editor.setModel(newTab.model);
@@ -140,11 +140,11 @@ export class TabManager {
       console.warn('No active tab to save');
       return;
     }
-    var filename:string | null = this.tabs[this.activeIndex].name;
+    var filename:string | null = this.tabs[this.activeIndex].disp_name;
     if (filename === '<無題>') {
       filename = this.newfilename('');
       if (filename == null) return;
-      this.tabs[this.activeIndex].name = filename;  // 名前をアップデート
+      this.tabs[this.activeIndex].disp_name = filename;  // 名前をアップデート
     }
     const content = this.tabs[this.activeIndex].model.getValue();
     await this.filemgr.fileWrite(filename, content);

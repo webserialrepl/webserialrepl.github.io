@@ -191,27 +191,36 @@ public async getFileList(): Promise<string[]> {
     try {
       await this.resetReader();
       await this.enterRawMode(); // CTRL+A
+      // 再帰的にファイルを列挙して、1行ずつ出力する小さな Python スクリプトを実行
       await this.write('import os\r');
-      await this.write('print([name for name in os.listdir() if not (os.stat(name)[0] & 0x4000)])\r'); // ディレクトリを除外したリストを表示
+      await this.write('def walk(d="."):\r');
+      await this.write('  l=[]\r');
+      await this.write('  for name in os.listdir(d):\r');
+      await this.write('    path = d + "/" + name if d!="." else name\r');
+      await this.write('    try:\r');
+      await this.write('      if os.stat(path)[0] & 0x4000:\r');
+      await this.write('        l.extend(walk(path))\r');
+      await this.write('      else:\r');
+      await this.write('        l.append(path)\r');
+      await this.write('    except:\r');
+      await this.write('      pass\r');
+      await this.write('  return l\r');
+      await this.write('for p in walk():\r');
+      await this.write('  print(p)\r');
       await this.serial.sendControl(0x04); // CTRL+D
-      console.log('Command sent:');
-  
-      // プロンプトを読み飛ばす
-      const skip = await this.startReadLoop('>OK'); // >OK を待つ
-      console.log('Skip:', skip);
-  
-      // ファイル内容を取得
-      // this.isTerminalOutput = false;
-      const result = await this.startReadLoop('\x04'); // CTRL+D を待つ
-      this.startReadLoop(false); // データを処理する関数を呼び出す
-      console.log('Received content:', result);
-      await this.exitRawMode(); // ポートを解放
 
-      // Python のリスト形式からファイル名を抽出
-      const files = result
-        .replace(/[\[\]'\s]/g, '') // 角括弧、シングルクォート、空白を削除
-        .split(',') // カンマで分割
-  
+      // プロンプトを読み飛ばす
+      await this.startReadLoop('>OK'); // >OK を待つ
+
+      // 出力を取得（各ファイルが改行で区切られている想定）
+      const result = await this.startReadLoop('\x04'); // CTRL+D を待つ
+      this.startReadLoop(false);
+      await this.exitRawMode();
+
+      if (!result) return [];
+
+      // 改行で分割し、空行を除去して返す
+      const files = result.split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
       return files;
     } catch (error) {
       console.error('Error fetching file list:', error);

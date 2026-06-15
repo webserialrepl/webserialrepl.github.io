@@ -127,9 +127,13 @@ editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => commands.em
 
 // ファイルツリーのファイル名をクリックしたら、ファイルを読み込む
 document.getElementById('file-tree')?.addEventListener('sl-selection-change', async (e: any) => {
-  const filename = e.detail.selection[0]?.textContent;
-  if (!filename) return;
-    tabs.addContentTab(filename);
+  const sel = e.detail.selection[0];
+  if (!sel) return;
+  // data-path 属性にフルパス、data-is-file 属性が '1' のときのみファイルを開く
+  const path = sel.getAttribute && sel.getAttribute('data-path');
+  const isFile = sel.getAttribute && sel.getAttribute('data-is-file') === '1';
+  if (!path || !isFile) return;
+  tabs.addContentTab(path);
 });
 document.getElementById('refreshFileList')?.addEventListener('click', () => commands.emit('list'));
 

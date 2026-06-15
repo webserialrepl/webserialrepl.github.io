@@ -79,16 +79,44 @@ export class FileManager {
     const filetree = document.getElementById('file-tree');
     if (!filetree) return;
     this.files = await this.device.getFileList();
+    // 既存の項目をクリア
+    while (filetree.firstChild) filetree.removeChild(filetree.firstChild);
 
-    filetree.innerHTML = ''; // 既存の項目をクリア
+    // ファイルパスの配列を階層ツリーに変換して表示
+    for (const fullPath of this.files) {
+      const segments = fullPath.split('/');
+      let parent: HTMLElement = filetree;
+      let accum = '';
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        accum = accum ? `${accum}/${seg}` : seg;
 
-    this.files.forEach((file) => {
-      const item = document.createElement('sl-tree-item') as HTMLElement & { value?: string };
-      item.textContent = file;
-      item.value = file;
-      filetree.appendChild(item);
-    });
-    this.fileTreeDisplayed = true; // ファイルツリーが表示されているかどうか
+        // 既に同じパスを表す子要素があるか検索
+        const existing = Array.from(parent.children).find((c) => (c as HTMLElement).getAttribute && (c as HTMLElement).getAttribute('data-path') === accum) as HTMLElement | undefined;
+        if (existing) {
+          // 存在すれば次の階層へ
+          parent = existing;
+          continue;
+        }
+
+        // 新しい要素を作成
+        const item = document.createElement('sl-tree-item') as HTMLElement & { value?: string };
+        item.textContent = seg;
+        item.setAttribute('data-path', accum);
+
+        if (i < segments.length - 1) {
+          // ディレクトリノード
+          parent.appendChild(item);
+          parent = item; // 次の階層に移動
+        } else {
+          // ファイル（葉）ノード
+          item.setAttribute('data-is-file', '1');
+          item.value = accum; // 値にはフルパスを持たせる
+          parent.appendChild(item);
+        }
+      }
+    }
+    this.fileTreeDisplayed = true;
   }
 
   fileExists(filename: string): boolean {

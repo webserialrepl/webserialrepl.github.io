@@ -205,8 +205,16 @@ export class SerialPortManager {
       // 接続イベントを発生
       document.dispatchEvent(new CustomEvent(SerialPortManager.EVENT_CONNECTED));
     } catch (e) {
-      if (e instanceof Error) {
-        console.error(`<ERROR: ${e.message}>`);
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`<ERROR: ${msg}>`);
+      // ターミナルに赤字でエラーメッセージを出力（存在する場合）
+      try {
+        if (this.terminalOutputCallback) {
+          // ANSI 赤色コードでラップして出力
+          this.terminalOutputCallback(`\x1b[31m接続エラー: ${msg}\x1b[0m\r\n`);
+        }
+      } catch (err) {
+        console.error('Failed to write error to terminal callback', err);
       }
       this.setUiDisconnected();
     }

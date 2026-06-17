@@ -16,11 +16,21 @@ jobs:
       - name: Checkout develop
         uses: actions/checkout@v3
 
-      # すでにリポジトリ内にある dist フォルダを develop フォルダに退避
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (develop mode)
+        run: npm run build:dev
+
+      # ビルド済みの dist フォルダを deploy/develop にコピー
       - name: Move dist to develop folder
         run: |
-          mkdir deploy
-          mkdir deploy/develop
+          mkdir -p deploy/develop
           cp -r dist/* deploy/develop/
 
       # デプロイを実行

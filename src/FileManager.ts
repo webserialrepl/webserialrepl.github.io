@@ -78,7 +78,17 @@ export class FileManager {
   async fileList(): Promise<void> {
     const filetree = document.getElementById('file-tree');
     if (!filetree) return;
-    this.files = await this.device.getFileList();
+    const newFiles = await this.device.getFileList();
+
+    // デバイスから空リストが返ってきた場合、通信エラーなどの可能性がある。
+    // 既に表示中のファイル一覧があるなら上書きせず保持する。
+    if (newFiles.length === 0 && this.files.length > 0) {
+      console.warn('getFileList returned empty; keeping existing file tree');
+      return;
+    }
+
+    this.files = newFiles;
+
     // 既存の項目をクリア
     while (filetree.firstChild) filetree.removeChild(filetree.firstChild);
 

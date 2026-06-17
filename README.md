@@ -50,3 +50,9 @@ develop ブランチをgithub(https://github.com/webserialrepl/webserialrepl.git
 ```
 https://webserialrepl.github.io/develop/
 ```
+
+main ブランチのローカルでのビルド＆デバッグ
+```
+npm run build     # build番号をインクリメントしてdistにビルド
+npm run preview   # http://localhost:3000/develop/ 
+```

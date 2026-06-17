@@ -105,13 +105,16 @@ export class FileManager {
         item.setAttribute('data-path', accum);
 
         if (i < segments.length - 1) {
-          // ディレクトリノード
-          parent.appendChild(item);
+          // ディレクトリノード: 親要素内で既存のファイルノードの前に挿入して、
+          // ディレクトリが常にファイルより前に来るようにする
+          const firstFileChild = Array.from(parent.children).find(c => (c as HTMLElement).getAttribute && (c as HTMLElement).getAttribute('data-is-file') === '1') as HTMLElement | undefined;
+          parent.insertBefore(item, firstFileChild || null);
           parent = item; // 次の階層に移動
         } else {
           // ファイル（葉）ノード
           item.setAttribute('data-is-file', '1');
           item.value = accum; // 値にはフルパスを持たせる
+          // ファイルはディレクトリの後ろに配置する（appendChildで良い）
           parent.appendChild(item);
         }
       }

@@ -89,13 +89,22 @@ export class FileManager {
 
     this.files = newFiles;
 
-    // 既存の項目をクリア
-    while (filetree.firstChild) filetree.removeChild(filetree.firstChild);
+    // 既存の項目をクリアしてからビルド
+    this.clearTree(filetree);
+    this.buildTree(this.files, filetree);
+    this.fileTreeDisplayed = true;
+  }
 
-    // ファイルパスの配列を階層ツリーに変換して表示
-    for (const fullPath of this.files) {
+  // ツリー要素を安全に消去する
+  private clearTree(root: HTMLElement) {
+    while (root.firstChild) root.removeChild(root.firstChild);
+  }
+
+  // ファイルパス配列から階層ツリーを構築して DOM に追加する
+  private buildTree(paths: string[], root: HTMLElement) {
+    for (const fullPath of paths) {
       const segments = fullPath.split('/');
-      let parent: HTMLElement = filetree;
+      let parent: HTMLElement = root;
       let accum = '';
       for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
@@ -104,32 +113,34 @@ export class FileManager {
         // 既に同じパスを表す子要素があるか検索
         const existing = Array.from(parent.children).find((c) => (c as HTMLElement).getAttribute && (c as HTMLElement).getAttribute('data-path') === accum) as HTMLElement | undefined;
         if (existing) {
-          // 存在すれば次の階層へ
           parent = existing;
           continue;
         }
 
-        // 新しい要素を作成
-        const item = document.createElement('sl-tree-item') as HTMLElement & { value?: string };
-        item.textContent = seg;
-        item.setAttribute('data-path', accum);
-
+        const item = this.createTreeItem(seg, accum, i === segments.length - 1);
         if (i < segments.length - 1) {
-          // ディレクトリノード: 親要素内で既存のファイルノードの前に挿入して、
-          // ディレクトリが常にファイルより前に来るようにする
+          // ディレクトリは親内で既存のファイルの前に挿入する
           const firstFileChild = Array.from(parent.children).find(c => (c as HTMLElement).getAttribute && (c as HTMLElement).getAttribute('data-is-file') === '1') as HTMLElement | undefined;
           parent.insertBefore(item, firstFileChild || null);
-          parent = item; // 次の階層に移動
+          parent = item;
         } else {
-          // ファイル（葉）ノード
-          item.setAttribute('data-is-file', '1');
-          item.value = accum; // 値にはフルパスを持たせる
-          // ファイルはディレクトリの後ろに配置する（appendChildで良い）
+          // ファイルは末尾に追加
           parent.appendChild(item);
         }
       }
     }
-    this.fileTreeDisplayed = true;
+  }
+
+  // 単一の sl-tree-item を作成するユーティリティ
+  private createTreeItem(label: string, path: string, isFile: boolean): HTMLElement & { value?: string } {
+    const item = document.createElement('sl-tree-item') as HTMLElement & { value?: string };
+    item.textContent = label;
+    item.setAttribute('data-path', path);
+    if (isFile) {
+      item.setAttribute('data-is-file', '1');
+      item.value = path;
+    }
+    return item;
   }
 
   fileExists(filename: string): boolean {

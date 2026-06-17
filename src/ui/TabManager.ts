@@ -28,7 +28,7 @@ export class TabManager {
         }
       }
     }
-    const newTab: TabState = { id: Date.now(), disp_name: name, file_path: null, isModified: false, model: this.emp_model };
+    const newTab: TabState = { id: Date.now(), disp_name: name, file_path: name === '<無題>' ? null : name, isModified: false, isNew: name === '<無題>', model: this.emp_model };
     this.tabs.push(newTab);
     this.activeIndex = this.tabs.length - 1;
     this.editor.setModel(newTab.model);
@@ -36,11 +36,15 @@ export class TabManager {
     // ファイルの読み込みが成功したら内容をアップデート
     var content = '';
     try {
-      const readResult = await this.filemgr.fileRead(name);
-      // If readResult is null (error), do not display file contents
-      content = readResult == null ? '' : readResult;
+      if (name !== '<無題>') {
+        const readResult = await this.filemgr.fileRead(name);
+        // If readResult is null (error), do not display file contents
+        content = readResult == null ? '' : readResult;
+        // mark as not new
+        this.tabs[this.activeIndex].isNew = false;
+        this.tabs[this.activeIndex].file_path = name;
+      }
     } catch (error) {
-      // If an unexpected exception bubbles up, keep editor empty and log
       content = '';
       console.warn(`Failed to read file ${name}:`, error);
     }
@@ -141,16 +145,27 @@ export class TabManager {
       return;
     }
     var filename:string | null = this.tabs[this.activeIndex].disp_name;
-    if (filename === '<無題>') {
+    // 新規タブ判定は isNew フラグで行う
+    const wasNew = !!this.tabs[this.activeIndex].isNew;
+    if (wasNew) {
       filename = this.newfilename('');
       if (filename == null) return;
       this.tabs[this.activeIndex].disp_name = filename;  // 名前をアップデート
+      this.tabs[this.activeIndex].file_path = filename;
     }
     const content = this.tabs[this.activeIndex].model.getValue();
     await this.filemgr.fileWrite(filename, content);
     this.tabs[this.activeIndex].isModified = false;  // 保存されたため未変更に
+    this.tabs[this.activeIndex].isNew = false; // 保存されたので新規フラグを解除
     this.render();
-    this.filemgr.fileList(); // ファイルツリーを更新
+    // 新規ファイルを書き込んだ場合のみファイルツリーを更新
+    if (wasNew) {
+      try {
+        await this.filemgr.fileList();
+      } catch (e) {
+        console.warn('fileList refresh failed after new file save', e);
+      }
+    }
   }
 
 }

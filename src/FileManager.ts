@@ -41,6 +41,8 @@ export class FileManager {
     });
     // 初期状態で無効化
     this.disableAllButtons();
+    // コンテキストメニューの初期化
+    this.setupContextMenu();
 
   }
 
@@ -93,6 +95,102 @@ export class FileManager {
     this.clearTree(filetree);
     this.buildTree(this.files, filetree);
     this.fileTreeDisplayed = true;
+  }
+
+  // --- コンテキストメニュー処理 ---
+  private contextMenuElement: HTMLElement | null = null;
+
+  private setupContextMenu(): void {
+    const filetree = document.getElementById('file-tree');
+    if (!filetree) return;
+
+    filetree.addEventListener('contextmenu', (ev) => {
+      const target = ev.target as HTMLElement | null;
+      if (!target) return;
+      // sl-tree-item の要素を探す
+      const item = target.closest && (target.closest('sl-tree-item') as HTMLElement | null);
+      if (!item) return;
+      const isFile = item.getAttribute && item.getAttribute('data-is-file') === '1';
+      if (!isFile) return; // ファイルのみ対象
+
+      ev.preventDefault();
+      const path = item.getAttribute('data-path') || '';
+      this.showContextMenu(ev.clientX, ev.clientY, path);
+    });
+
+    // クリックで非表示
+    document.addEventListener('click', () => this.hideContextMenu());
+    window.addEventListener('blur', () => this.hideContextMenu());
+  }
+
+  private showContextMenu(x: number, y: number, path: string) {
+    this.hideContextMenu();
+    const menu = document.createElement('div');
+    menu.style.position = 'fixed';
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+    menu.style.background = 'white';
+    menu.style.border = '1px solid #444';
+    menu.style.zIndex = '10000';
+    menu.style.padding = '4px';
+    menu.style.borderRadius = '4px';
+
+    const renameBtn = document.createElement('div');
+    renameBtn.textContent = '名前を変更';
+    renameBtn.style.padding = '6px 12px';
+    renameBtn.style.cursor = 'pointer';
+    renameBtn.onclick = async (e) => {
+      e.stopPropagation();
+      this.hideContextMenu();
+      const newName = prompt('新しいファイル名を入力：', path.split('/').pop() || path);
+      if (!newName) return;
+      // 新しいフルパスは同じディレクトリに置く
+      const dir = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : '';
+      const newPath = dir ? `${dir}/${newName}` : newName;
+      if (this.fileExists(newPath)) {
+        alert('同名のファイルが既に存在します');
+        return;
+      }
+      try {
+        await this.device.renameFile(path, newPath);
+        await this.fileList();
+      } catch (err) {
+        console.error('rename failed', err);
+        try { this.terminal.logToTerminal(`Rename failed: ${String(err)}`, 'error'); } catch {}
+        alert('名前変更に失敗しました: ' + String(err));
+      }
+    };
+
+    const deleteBtn = document.createElement('div');
+    deleteBtn.textContent = '削除';
+    deleteBtn.style.padding = '6px 12px';
+    deleteBtn.style.cursor = 'pointer';
+    deleteBtn.onclick = async (e) => {
+      e.stopPropagation();
+      this.hideContextMenu();
+      const ok = confirm(`本当にファイルを削除しますか？\n${path}`);
+      if (!ok) return;
+      try {
+        await this.device.deleteFile(path);
+        await this.fileList();
+      } catch (err) {
+        console.error('delete failed', err);
+        try { this.terminal.logToTerminal(`Delete failed: ${String(err)}`, 'error'); } catch {}
+        alert('削除に失敗しました: ' + String(err));
+      }
+    };
+
+    menu.appendChild(renameBtn);
+    menu.appendChild(deleteBtn);
+    document.body.appendChild(menu);
+    this.contextMenuElement = menu;
+  }
+
+  private hideContextMenu() {
+    if (this.contextMenuElement) {
+      try { this.contextMenuElement.remove(); } catch {}
+      this.contextMenuElement = null;
+    }
   }
 
   // ツリー要素を安全に消去する

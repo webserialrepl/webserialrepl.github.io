@@ -100,6 +100,70 @@ export class DeviceCommunicator {
     }
   }
 
+  /**
+   * デバイス上のファイルを削除する
+   */
+  public async deleteFile(filename: string): Promise<void> {
+    console.log('deleteFile:', filename);
+    try {
+      await this.resetReader();
+      await this.enterRawMode();
+      await this.write('import os\r');
+      await this.write(`try:\r  os.remove("${filename}")\r  print(\"__FILE_DELETED__\")\rexcept Exception as e:\r  print(\"__DELETE_FAILED__:\"+str(e))\r`);
+      await this.serial.sendControl(0x04);
+
+      await this.startReadLoop('>OK');
+      const result = await this.startReadLoop('\x04');
+      this.startReadLoop(false);
+      await this.exitRawMode();
+
+      if (!result) throw new Error('No response from device');
+      if (result.indexOf('__FILE_DELETED__') >= 0) {
+        return;
+      }
+      if (result.indexOf('__DELETE_FAILED__:') >= 0) {
+        const msg = result.split('__DELETE_FAILED__:')[1] || 'unknown';
+        throw new Error(String(msg).trim());
+      }
+      throw new Error('Unexpected response: ' + result);
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * デバイス上のファイルをリネームする
+   */
+  public async renameFile(oldPath: string, newPath: string): Promise<void> {
+    console.log('renameFile:', oldPath, '->', newPath);
+    try {
+      await this.resetReader();
+      await this.enterRawMode();
+      await this.write('import os\r');
+      await this.write(`try:\r  os.rename("${oldPath}", "${newPath}")\r  print(\"__RENAMED__\")\rexcept Exception as e:\r  print(\"__RENAME_FAILED__:\"+str(e))\r`);
+      await this.serial.sendControl(0x04);
+
+      await this.startReadLoop('>OK');
+      const result = await this.startReadLoop('\x04');
+      this.startReadLoop(false);
+      await this.exitRawMode();
+
+      if (!result) throw new Error('No response from device');
+      if (result.indexOf('__RENAMED__') >= 0) {
+        return;
+      }
+      if (result.indexOf('__RENAME_FAILED__:') >= 0) {
+        const msg = result.split('__RENAME_FAILED__:')[1] || 'unknown';
+        throw new Error(String(msg).trim());
+      }
+      throw new Error('Unexpected response: ' + result);
+    } catch (error) {
+      console.error('Error renaming file:', error);
+      throw error;
+    }
+  }
+
 /**
  * 書き込んだ内容とデバイス上の内容を比較して検証
  * @param {Uint8Array} originalContent - 書き込んだ内容

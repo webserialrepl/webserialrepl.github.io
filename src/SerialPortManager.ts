@@ -3,7 +3,7 @@ export interface PortOption extends HTMLOptionElement {
 }
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+// デコーダはインスタンスプロパティで管理します（接続ごとにリセット可能）
 const DEFAULT_MAX_RESULT = 10000;
 function log(msg: string): void {
   // const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -29,10 +29,12 @@ export class SerialPortManager {
   private isTerminalOutput: boolean = false; // ターミナル出力の状態を管理
   private leftoverData: string = ''; // 未処理のデータを保持
   private replStatus: 'REPL' | 'RUNNING' | null = null;
+  private decoder: TextDecoder;
 
 
   constructor(callback: ((chunk: string) => void) | null = null) {
     this.terminalOutputCallback = callback;
+    this.decoder = new TextDecoder('utf-8');
   }
 
   /**
@@ -222,6 +224,8 @@ export class SerialPortManager {
   public async resetReader(): Promise<void> {
     await this.stopReadLoop();
     console.log('stopReadLoop called');
+    // デコーダの状態をリセットして未処理のバイトを破棄
+    try { this.decoder = new TextDecoder('utf-8'); } catch(e) {}
   }
 
 
@@ -332,12 +336,22 @@ export class SerialPortManager {
     try {
       while (this.reading) {
         const { value, done } = await this.streamRead();
-        if (done) {
+        if (!value && done) {
+          // ストリーム終了時: デコーダの残りをフラッシュして終了
+          const remaining = this.decoder.decode();
+          if (remaining) {
+            // 受信バッファへ追加
+            if (this.waiters.length > 0) this.receiveBuffer += remaining;
+            else this.receiveBuffer = (this.receiveBuffer + remaining).slice(-512);
+            if (this.isTerminalOutput && this.terminalOutputCallback) this.terminalOutputCallback(remaining);
+          }
           console.log('Stream closed', this.isTerminalOutput);
           break;
         }
         if (!value) continue;
-        const chunk = new TextDecoder('utf-8').decode(value);
+
+        // ストリーミングデコード（マルチバイト文字の途中受信に対応）
+        const chunk = this.decoder.decode(value, { stream: true });
         // デバッグ用に生のバイト列のログを入れたい場合はここを有効化
         // console.log(new Date().toISOString(), 'RX HEX:', Array.from(value).map(b => b.toString(16).padStart(2,'0')).join(' '));
 

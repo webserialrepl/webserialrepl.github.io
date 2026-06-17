@@ -1,18 +1,18 @@
 import * as monaco from 'monaco-editor';
+import { TabState, displayName } from './Tab';
 
 export class TabManager {
-  private tabs: { name: string; dispname: string; model: monaco.editor.ITextModel }[] = [];
-  private activeIndex = 0;
+  private tabs: TabState[] = [];
+  private activeIndex: number = -1;
   private emp_model = monaco.editor.createModel('', 'python');
 
-
-  // エディタの内容が変更されたときにファイル名にアスタリスクを追加
+  // エディタの内容が変更されたときにファイルの変更フラグを立てる
   constructor(private tabBar: HTMLElement, private editor: monaco.editor.IStandaloneCodeEditor, private filemgr: any) {
     this.editor.onDidChangeModelContent(() => {
       if (this.activeIndex < 0 || this.activeIndex >= this.tabs.length) return;
       const tab = this.tabs[this.activeIndex];
-      if (!tab.dispname.startsWith('*')) {
-        tab.dispname = '*' + tab.name;
+      if (!tab.isModified) {
+        tab.isModified = true;
         this.render();
       }
     });
@@ -22,24 +22,29 @@ export class TabManager {
     // ファイル名が一覧にあるかチェック
     if (name!== '<無題>') {
       for (const tab of this.tabs) {
-        if (tab.name === name) {
+        if (tab.disp_name === name) {
           console.warn(`Tab with name "${name}" already exists.`);
           return;
         }
       }
     }
-    this.tabs.push({ name, dispname:name, model: this.emp_model });
+    const newTab: TabState = { id: Date.now(), disp_name: name, file_path: name === '<無題>' ? null : name, isModified: false, isNew: name === '<無題>', model: this.emp_model };
+    this.tabs.push(newTab);
     this.activeIndex = this.tabs.length - 1;
-    this.editor.setModel(this.emp_model);
+    this.editor.setModel(newTab.model);
     this.render();
     // ファイルの読み込みが成功したら内容をアップデート
     var content = '';
     try {
-      const readResult = await this.filemgr.fileRead(name);
-      // If readResult is null (error), do not display file contents
-      content = readResult == null ? '' : readResult;
+      if (name !== '<無題>') {
+        const readResult = await this.filemgr.fileRead(name);
+        // If readResult is null (error), do not display file contents
+        content = readResult == null ? '' : readResult;
+        // mark as not new
+        this.tabs[this.activeIndex].isNew = false;
+        this.tabs[this.activeIndex].file_path = name;
+      }
     } catch (error) {
-      // If an unexpected exception bubbles up, keep editor empty and log
       content = '';
       console.warn(`Failed to read file ${name}:`, error);
     }
@@ -47,6 +52,7 @@ export class TabManager {
     model.setEOL(monaco.editor.EndOfLineSequence.LF); // 改行コードを LF に設定
     
     this.tabs[this.activeIndex].model = model;
+    this.tabs[this.activeIndex].isModified = false;
     this.editor.setModel(model);
     this.render();
   }
@@ -61,7 +67,7 @@ export class TabManager {
     this.tabBar.innerHTML = '';
     this.tabs.forEach((tab, i) => {
       const div = document.createElement('div');
-      div.textContent = tab.dispname;
+      div.textContent = displayName(tab);
       div.className = 'tab' + (i === this.activeIndex ? ' active' : '');
 
       // クローズボタンを追加
@@ -72,8 +78,8 @@ export class TabManager {
       closeBtn.onclick = async (e) => {
         e.stopPropagation(); // タブ切り替えイベントを防ぐ
 
-        // 変更判定（先頭が * なら変更ありとみなす）
-        const isModified = tab.dispname.startsWith('*');
+        // 変更判定
+        const isModified = tab.isModified;
         if (!isModified) {
           this.closeTab(i);
           return;
@@ -94,7 +100,9 @@ export class TabManager {
 
   // タブを閉じるメソッドを追加
   closeTab(index: number) {
-    this.tabs.splice(index, 1);
+    const removed = this.tabs.splice(index, 1);
+    // dispose model to free resources
+    try { removed.forEach(t => t.model.dispose()); } catch (e) {}
     if (this.tabs.length === 0) {
       this.editor.setModel(null);
       this.activeIndex = -1;
@@ -136,17 +144,28 @@ export class TabManager {
       console.warn('No active tab to save');
       return;
     }
-    var filename:string | null = this.tabs[this.activeIndex].name;
-    if (filename === '<無題>') {
+    var filename:string | null = this.tabs[this.activeIndex].disp_name;
+    // 新規タブ判定は isNew フラグで行う
+    const wasNew = !!this.tabs[this.activeIndex].isNew;
+    if (wasNew) {
       filename = this.newfilename('');
       if (filename == null) return;
-      this.tabs[this.activeIndex].name = filename;  // 名前をアップデート
+      this.tabs[this.activeIndex].disp_name = filename;  // 名前をアップデート
+      this.tabs[this.activeIndex].file_path = filename;
     }
     const content = this.tabs[this.activeIndex].model.getValue();
     await this.filemgr.fileWrite(filename, content);
-    this.tabs[this.activeIndex].dispname = filename;  // 表示名もアップデート
+    this.tabs[this.activeIndex].isModified = false;  // 保存されたため未変更に
+    this.tabs[this.activeIndex].isNew = false; // 保存されたので新規フラグを解除
     this.render();
-    this.filemgr.fileList(); // ファイルツリーを更新
+    // 新規ファイルを書き込んだ場合のみファイルツリーを更新
+    if (wasNew) {
+      try {
+        await this.filemgr.fileList();
+      } catch (e) {
+        console.warn('fileList refresh failed after new file save', e);
+      }
+    }
   }
 
 }

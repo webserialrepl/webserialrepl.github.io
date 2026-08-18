@@ -320,6 +320,17 @@ export class SerialPortManager {
       return '';
     }
 
+    if (this.leftoverData) {
+      const buffered = this.leftoverData;
+      this.leftoverData = '';
+      const bufferedIndex = buffered.indexOf(targetString);
+      if (bufferedIndex >= 0) {
+        this.leftoverData = buffered.slice(bufferedIndex + targetString.length);
+        return buffered.slice(0, bufferedIndex);
+      }
+      this.receiveBuffer = buffered + this.receiveBuffer;
+    }
+
     // targetString が指定されたら waiter を作成して待つ
     return await new Promise<string>((resolve, reject) => {
       const maxSize = options?.maxSize ?? DEFAULT_MAX_RESULT;

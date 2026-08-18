@@ -274,8 +274,8 @@ export class FileManager {
 
     } catch (error) {
       const err = error as Error;
-      console.error(`Error saving file ${this.selectedFile}:`, err);
-      this.terminal.logToTerminal(`Error saving file "${this.selectedFile}": ${err.message}`, 'error'); // エラーメッセージを出力
+      console.error(`Error saving file ${filename}:`, err);
+      this.terminal.logToTerminal(`Error saving file "${filename}": ${err.message}`, 'error'); // エラーメッセージを出力
     }
   }
 

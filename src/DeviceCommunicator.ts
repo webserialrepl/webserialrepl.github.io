@@ -77,12 +77,20 @@ export class DeviceCommunicator {
    */
   public async writeFile(filename: string, content: Uint8Array): Promise<void> {
     console.log('writeFile:', filename);
+    let rawModeActive = false;
     try {
       await this.enterRawMode(); // CTRL+A
+      rawModeActive = true;
       await this.write(`with open("${filename}", "wb") as f:\r`);
       const chunk = JSON.stringify(Array.from(content));
       await this.write(`  f.write(bytes(${chunk}))\r`);
       await this.serial.sendControl(0x04); // CTRL+D
+
+      // 書き込み処理自身の応答を消費してから検証用のコマンドを開始する。
+      await this.startReadLoop('>OK');
+      await this.startReadLoop('\x04');
+      await this.exitRawMode();
+      rawModeActive = false;
 
       // 書き込み後に検証
       console.log('Verifying written file...');
@@ -96,7 +104,9 @@ export class DeviceCommunicator {
       console.error('Error writing file:', err.message);
       throw new Error(`Failed to write file "${filename}": ${err.message}`);
     } finally {
-      //await this.exitRawMode(); // ポートを解放
+      if (rawModeActive) {
+        await this.exitRawMode();
+      }
     }
   }
 

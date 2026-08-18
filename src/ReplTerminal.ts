@@ -94,11 +94,10 @@ export class ReplTerminal extends Terminal {
    * @param {string} message - 出力するメッセージ
    * @param {'info' | 'error'} type - メッセージの種類 ('info' または 'error')
    */
-  public logToTerminal(message: string, type: 'info' | 'error' = 'info'): void {
-    if (type === 'error') {
-      this.write(`\x1b[31m${message}\x1b[0m\r\n`); // 赤色で出力
-    } else {
-      this.write(`\x1b[32m${message}\x1b[0m\r\n`); // 緑色で出力
-    }
+  public async logToTerminal(message: string, type: 'info' | 'error' = 'info'): Promise<void> {
+    const color = type === 'error' ? '\x1b[31m' : '\x1b[32m';
+    await new Promise<void>((resolve) => {
+      this.write(`${color}${message}\x1b[0m\r\n`, resolve);
+    });
   }
 }

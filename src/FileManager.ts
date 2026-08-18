@@ -270,12 +270,12 @@ export class FileManager {
     try {
       await this.device.writeFile(filename, binaryData); // 選択されたファイルに保存
       console.log(`File saved: ${filename}`);
-      this.terminal.logToTerminal(`File saved successfully: ${filename}`, 'info'); // 成功メッセージを出力
+      await this.terminal.logToTerminal(`File saved successfully: ${filename}`, 'info'); // 成功メッセージを出力
 
     } catch (error) {
       const err = error as Error;
       console.error(`Error saving file ${filename}:`, err);
-      this.terminal.logToTerminal(`Error saving file "${filename}": ${err.message}`, 'error'); // エラーメッセージを出力
+      await this.terminal.logToTerminal(`Error saving file "${filename}": ${err.message}`, 'error'); // エラーメッセージを出力
     }
   }
 

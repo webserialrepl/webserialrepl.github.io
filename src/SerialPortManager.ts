@@ -234,6 +234,9 @@ export class SerialPortManager {
     console.log('stopReadLoop called');
     // デコーダの状態をリセットして未処理のバイトを破棄
     try { this.decoder = new TextDecoder('utf-8'); } catch(e) {}
+    // 直前のコマンドの残留データ（バナーやプロンプト）が次のコマンドに混入しないよう破棄する
+    this.receiveBuffer = '';
+    this.leftoverData = '';
   }
 
 

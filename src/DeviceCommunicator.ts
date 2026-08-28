@@ -71,6 +71,23 @@ export class DeviceCommunicator {
       }
     
   /**
+   * 1 回分のコードを raw REPL で実行し、stdout を返す。stderr にトレースバックが
+   * あれば例外として投げる。
+   */
+  private async execRaw(code: string): Promise<string> {
+    await this.write(code);
+    await this.serial.sendControl(0x04); // CTRL+D
+    // raw REPL のプロトコル: "OK" -> (stdout) -> 0x04 -> (stderr/traceback) -> 0x04
+    await this.startReadLoop('>OK');
+    const stdout = await this.startReadLoop('\x04');
+    const stderr = await this.startReadLoop('\x04');
+    if (stderr && stderr.trim().length > 0) {
+      throw new Error(`Device reported an error while writing: ${stderr.trim()}`);
+    }
+    return stdout;
+  }
+
+  /**
    * ファイルを書き込む
    * @param {string} filename - ファイル名
    * @param {Uint8Array} content - 書き込む内容
@@ -78,37 +95,30 @@ export class DeviceCommunicator {
   public async writeFile(filename: string, content: Uint8Array): Promise<void> {
     console.log('writeFile:', filename);
     let rawModeActive = false;
+    let fileOpened = false;
     try {
       await this.enterRawMode(); // CTRL+A
       rawModeActive = true;
-      await this.write(`with open("${filename}", "wb") as f:\r`);
-      // 一度に大きな f.write() を送ると ESP32 側の受信バッファがオーバーフローして
-      // データが欠損することがあるため、小さなチャンクに分割して少し間隔を空けて送信する。
-      const CHUNK_SIZE = 256;
+
+      // 1 回の実行に全チャンクをまとめて送ると、生成されるバイトコードが
+      // MicroPython の上限を超えて "RuntimeError: bytecode overflow" になる。
+      // そのため open/write/close をそれぞれ別の raw REPL 実行に分割し、
+      // グローバル変数 f 経由でファイルオブジェクトを引き継ぐ。
+      await this.execRaw(`f = open("${filename}", "wb")\r`);
+      fileOpened = true;
+
+      const CHUNK_SIZE = 512;
       for (let offset = 0; offset < content.length; offset += CHUNK_SIZE) {
         const part = content.subarray(offset, offset + CHUNK_SIZE);
         const chunk = JSON.stringify(Array.from(part));
-        await this.write(`  f.write(bytes(${chunk}))\r`);
-        // デバイスがバッファを処理する時間を確保する
-        await new Promise((resolve) => setTimeout(resolve, 15));
+        await this.execRaw(`f.write(bytes(${chunk}))\r`);
       }
-      if (content.length === 0) {
-        await this.write(`  f.write(bytes([]))\r`);
-      }
-      await this.serial.sendControl(0x04); // CTRL+D
 
-      // raw REPL のプロトコルでは CTRL+D 後に "OK" -> (stdout) -> 0x04 -> (stderr/traceback) -> 0x04 の順で返る。
-      // これまでは stdout/stderr の内容を確認せずに握りつぶしていたため、書き込み中に例外が
-      // 発生してファイルが途中までしか書けていなくても気づけなかった。
-      await this.startReadLoop('>OK');
-      await this.startReadLoop('\x04'); // stdout 部分
-      const errorOutput = await this.startReadLoop('\x04'); // stderr/traceback 部分
+      await this.execRaw('f.close()\r');
+      fileOpened = false;
+
       await this.exitRawMode();
       rawModeActive = false;
-
-      if (errorOutput && errorOutput.trim().length > 0) {
-        throw new Error(`Device reported an error while writing: ${errorOutput.trim()}`);
-      }
 
       // 書き込み後に検証
       console.log('Verifying written file...');
@@ -124,6 +134,9 @@ export class DeviceCommunicator {
       console.error('Error writing file:', err.message);
       throw new Error(`Failed to write file "${filename}": ${err.message}`);
     } finally {
+      if (fileOpened) {
+        try { await this.execRaw('f.close()\r'); } catch (e) { /* ベストエフォート */ }
+      }
       if (rawModeActive) {
         await this.exitRawMode();
       }

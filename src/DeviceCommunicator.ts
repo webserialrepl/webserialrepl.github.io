@@ -82,8 +82,19 @@ export class DeviceCommunicator {
       await this.enterRawMode(); // CTRL+A
       rawModeActive = true;
       await this.write(`with open("${filename}", "wb") as f:\r`);
-      const chunk = JSON.stringify(Array.from(content));
-      await this.write(`  f.write(bytes(${chunk}))\r`);
+      // 一度に大きな f.write() を送ると ESP32 側の受信バッファがオーバーフローして
+      // データが欠損することがあるため、小さなチャンクに分割して少し間隔を空けて送信する。
+      const CHUNK_SIZE = 256;
+      for (let offset = 0; offset < content.length; offset += CHUNK_SIZE) {
+        const part = content.subarray(offset, offset + CHUNK_SIZE);
+        const chunk = JSON.stringify(Array.from(part));
+        await this.write(`  f.write(bytes(${chunk}))\r`);
+        // デバイスがバッファを処理する時間を確保する
+        await new Promise((resolve) => setTimeout(resolve, 15));
+      }
+      if (content.length === 0) {
+        await this.write(`  f.write(bytes([]))\r`);
+      }
       await this.serial.sendControl(0x04); // CTRL+D
 
       // 書き込み処理自身の応答を消費してから検証用のコマンドを開始する。

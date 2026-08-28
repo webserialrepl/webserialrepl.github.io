@@ -106,8 +106,10 @@ export class DeviceCommunicator {
       // 書き込み後に検証
       console.log('Verifying written file...');
       const writtenContent = await this.readFile(filename); // デバイス上のファイルを読み取る
-      if (!this.verifyContent(content, writtenContent)) {
-        throw new Error('File verification failed: Written content does not match.');
+      const diff = this.diffContent(content, writtenContent);
+      if (diff) {
+        console.error('Verification diff:', diff);
+        throw new Error(`File verification failed: Written content does not match. (${diff})`);
       }
       console.log('File verification succeeded.');
     } catch (error) {
@@ -192,15 +194,30 @@ export class DeviceCommunicator {
  * @return {boolean} - 一致する場合は true、そうでない場合は false
  */
 private verifyContent(originalContent: Uint8Array, writtenContent: Uint8Array): boolean {
+  return this.diffContent(originalContent, writtenContent) === null;
+}
+
+/**
+ * 2 つのバイト列を比較し、最初に異なる箇所の情報を返す（一致する場合は null）
+ */
+private diffContent(originalContent: Uint8Array, writtenContent: Uint8Array): string | null {
   if (originalContent.length !== writtenContent.length) {
-    return false;
+    const minLen = Math.min(originalContent.length, writtenContent.length);
+    let firstDiff = minLen;
+    for (let i = 0; i < minLen; i++) {
+      if (originalContent[i] !== writtenContent[i]) { firstDiff = i; break; }
+    }
+    return `length mismatch: original=${originalContent.length} written=${writtenContent.length}, first diff at offset ${firstDiff}`;
   }
   for (let i = 0; i < originalContent.length; i++) {
     if (originalContent[i] !== writtenContent[i]) {
-      return false;
+      const start = Math.max(0, i - 8);
+      const origHex = Array.from(originalContent.slice(start, i + 8)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      const writtenHex = Array.from(writtenContent.slice(start, i + 8)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      return `first diff at offset ${i}: original=[${origHex}] written=[${writtenHex}]`;
     }
   }
-  return true;
+  return null;
 }
 
 /**

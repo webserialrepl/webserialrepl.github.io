@@ -97,11 +97,18 @@ export class DeviceCommunicator {
       }
       await this.serial.sendControl(0x04); // CTRL+D
 
-      // 書き込み処理自身の応答を消費してから検証用のコマンドを開始する。
+      // raw REPL のプロトコルでは CTRL+D 後に "OK" -> (stdout) -> 0x04 -> (stderr/traceback) -> 0x04 の順で返る。
+      // これまでは stdout/stderr の内容を確認せずに握りつぶしていたため、書き込み中に例外が
+      // 発生してファイルが途中までしか書けていなくても気づけなかった。
       await this.startReadLoop('>OK');
-      await this.startReadLoop('\x04');
+      await this.startReadLoop('\x04'); // stdout 部分
+      const errorOutput = await this.startReadLoop('\x04'); // stderr/traceback 部分
       await this.exitRawMode();
       rawModeActive = false;
+
+      if (errorOutput && errorOutput.trim().length > 0) {
+        throw new Error(`Device reported an error while writing: ${errorOutput.trim()}`);
+      }
 
       // 書き込み後に検証
       console.log('Verifying written file...');

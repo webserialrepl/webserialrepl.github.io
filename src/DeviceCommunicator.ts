@@ -24,6 +24,11 @@ export class DeviceCommunicator {
    * RAWモードに入る
    */
   private async enterRawMode(): Promise<void> {
+    // プログラム実行中は CTRL+A を送っても RAW モードに入れず、以降の応答待ちが
+    // 永遠に解決しない（デッドロック）ため、先に停止するよう促してここで打ち切る。
+    if (this.serial.getStatus() === 'RUNNING') {
+      throw new Error('プログラムの実行中はファイル操作できません。STOP で停止してから再度お試しください。');
+    }
     if (this.serial.getStatus() !== 'REPL') {
       console.error('Not in REPL mode. Exiting...');
     }

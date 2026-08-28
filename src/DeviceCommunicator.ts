@@ -210,10 +210,6 @@ export class DeviceCommunicator {
  * @param {Uint8Array} writtenContent - デバイス上の内容
  * @return {boolean} - 一致する場合は true、そうでない場合は false
  */
-private verifyContent(originalContent: Uint8Array, writtenContent: Uint8Array): boolean {
-  return this.diffContent(originalContent, writtenContent) === null;
-}
-
 /**
  * 2 つのバイト列を比較し、最初に異なる箇所の情報を返す（一致する場合は null）
  */
@@ -265,13 +261,8 @@ public async readFile(filename: string): Promise<Uint8Array> {
       this.startReadLoop(false); // データを処理する関数を呼び出す
 
       // 受信中にシリアル側でバッファがトリムされていたらデータ欠損の可能性があるためエラーにする
-      try {
-        if (this.serial.consumeTrimFlag()) {
-          throw new Error('Receive buffer trimmed during read; data may be incomplete');
-        }
-      } catch (e) {
-        // rethrow to be caught by outer catch
-        throw e;
+      if (this.serial.consumeTrimFlag()) {
+        throw new Error('Receive buffer trimmed during read; data may be incomplete');
       }
 
       if (!hexContent) {
@@ -353,9 +344,6 @@ public async getFileList(): Promise<string[]> {
 
   // 書き込みポートを使用してデバイスにデータを書き込む
   public async writeDevice(chunk: string): Promise<void> {
-    this.write(chunk);
-    // if (!this.isPortBusy) {
-    //     this.write(chunk);
-    // }
+    await this.write(chunk);
   }
 }

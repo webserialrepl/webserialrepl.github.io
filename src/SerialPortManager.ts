@@ -21,6 +21,7 @@ export class SerialPortManager {
   private reading:boolean = false; // 読み取り中かどうかのフラグ
   // 単一バックグラウンドループ用の状態
   private backgroundLoopRunning: boolean = false;
+  private backgroundLoopPromise: Promise<void> | null = null;
   private receiveBuffer: string = '';
   private lastTrimLogAt: number | null = null;
   private receiveBufferTrimmed: boolean = false; // true when buffer was trimmed due to maxSize
@@ -227,6 +228,13 @@ export class SerialPortManager {
       try { this.serialReader.releaseLock(); } catch (e) { /* ignore */ }
       this.serialReader = null;
     }
+    // バックグラウンドループの後片付け（backgroundLoopRunning = false）が完了するまで待つ。
+    // ここを待たずに戻ると、直後の startReadLoop() が「まだ動作中」と誤認して
+    // 新しいループ（＝新しい reader）を起動できず、以降の送受信が応答しなくなることがある。
+    if (this.backgroundLoopPromise) {
+      try { await this.backgroundLoopPromise; } catch {}
+      this.backgroundLoopPromise = null;
+    }
   }
 
   public async resetReader(): Promise<void> {
@@ -323,8 +331,7 @@ export class SerialPortManager {
 
     // バックグラウンドループが未起動なら起動
     if (!this.backgroundLoopRunning) {
-      // fire-and-forget でバックグラウンドループを開始
-      this.startBackgroundLoop().catch((e) => console.error('Background loop error:', e));
+      this.backgroundLoopPromise = this.startBackgroundLoop().catch((e) => console.error('Background loop error:', e));
     }
 
     // targetString が false の場合は単にバックグラウンドを動かすのみ

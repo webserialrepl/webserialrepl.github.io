@@ -29,20 +29,7 @@ export class DeviceCommunicator {
     }
     console.log('Entering RAW mode...');
     this.serial.setTerminalOutputEnabled(false);
-    // 直前のコマンドの応答（バナーやプロンプトの残り）が受信バッファに残っていると、
-    // 次に送るコードに混ざって SyntaxError の原因になるため、ここで一度クリアする。
-    await this.resetReader();
     await this.serial.sendControl(0x01); // CTRL+A
-    // raw REPL への切り替え完了（"raw REPL; CTRL-B to exit" バナー）を待ってから
-    // コードを送ることで、送信タイミングのずれによるデータ混入を防ぐ。
-    try {
-      await Promise.race([
-        this.startReadLoop('raw REPL; CTRL-B to exit\r\n>'),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('raw REPL wait timeout')), 3000)),
-      ]);
-    } catch (e) {
-      console.warn('[WARN] raw REPL prompt not detected within timeout:', e);
-    }
   }
 
   /**

@@ -30,6 +30,16 @@ export class DeviceCommunicator {
     console.log('Entering RAW mode...');
     this.serial.setTerminalOutputEnabled(false);
     await this.serial.sendControl(0x01); // CTRL+A
+    // 直前のコマンドの終了バナーとの取り違えを防ぐため、
+    // raw REPL への切り替え完了（"raw REPL; CTRL-B to exit" バナー）を待ってから次のコードを送る。
+    try {
+      await Promise.race([
+        this.startReadLoop('raw REPL; CTRL-B to exit\r\n>'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('raw REPL wait timeout')), 3000)),
+      ]);
+    } catch (e) {
+      console.warn('[WARN] raw REPL prompt not detected within timeout:', e);
+    }
   }
 
   /**
@@ -79,6 +89,7 @@ export class DeviceCommunicator {
     console.log('writeFile:', filename);
     let rawModeActive = false;
     try {
+      await this.resetReader();
       await this.enterRawMode(); // CTRL+A
       rawModeActive = true;
 

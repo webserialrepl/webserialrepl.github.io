@@ -261,16 +261,27 @@ export class SerialPortManager {
     this.isTerminalOutput = enabled;
   }
 
-    public async send(data:string): Promise<void> {
+    // 書き込み用のライターを取得（同じストリームに対して都度 getWriter/releaseLock を
+    // 繰り返すと、送信中のデータが失われることがあるため、接続中は使い回す。
+    private getSerialWriter(): WritableStreamDefaultWriter | null {
       if (!this.serialPort?.writable) {
+        return null;
+      }
+      if (!this.serialWriter) {
+        this.serialWriter = this.serialPort.writable.getWriter();
+      }
+      return this.serialWriter;
+    }
+
+    public async send(data:string): Promise<void> {
+      const writer = this.getSerialWriter();
+      if (!writer) {
         log('送信できません（未接続）');
         return;
       }
       try {
-  const writer = this.serialPort.writable.getWriter();
         const packet = encoder.encode(data);
         await writer.write(packet);
-  try { writer.releaseLock(); } catch (e) { /* ignore */ }
         log(`TX(${packet.length}B): ${JSON.stringify(data)}`);
       } catch (err) {
         console.error(`送信エラー: ${err}`);
@@ -279,16 +290,14 @@ export class SerialPortManager {
 
     // 送信制御文字用関数を追加
     public async sendControl(asciiCode: number): Promise<void> {
-      if (!this.serialPort?.writable) {
+      const writer = this.getSerialWriter();
+      if (!writer) {
         log('送信できません（未接続）');
         return;
       }
       try {
-  // Use a fresh writer for this control byte, then release the lock.
-        const writer = this.serialPort.writable.getWriter();
         const packet = new Uint8Array([asciiCode]); // バイナリ直接
         await writer.write(packet);
-  try { writer.releaseLock(); } catch (e) { /* ignore */ }
         log(`TX control: 0x${asciiCode.toString(16).padStart(2, '0')}`);
       } catch (err) {
         console.error(`送信エラー: ${err}`);

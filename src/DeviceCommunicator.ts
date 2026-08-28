@@ -71,23 +71,6 @@ export class DeviceCommunicator {
       }
     
   /**
-   * 1 回分のコードを raw REPL で実行し、stdout を返す。stderr にトレースバックが
-   * あれば例外として投げる。
-   */
-  private async execRaw(code: string): Promise<string> {
-    await this.write(code);
-    await this.serial.sendControl(0x04); // CTRL+D
-    // raw REPL のプロトコル: "OK" -> (stdout) -> 0x04 -> (stderr/traceback) -> 0x04
-    await this.startReadLoop('>OK');
-    const stdout = await this.startReadLoop('\x04');
-    const stderr = await this.startReadLoop('\x04');
-    if (stderr && stderr.trim().length > 0) {
-      throw new Error(`Device reported an error while writing: ${stderr.trim()}`);
-    }
-    return stdout;
-  }
-
-  /**
    * ファイルを書き込む
    * @param {string} filename - ファイル名
    * @param {Uint8Array} content - 書き込む内容
@@ -95,30 +78,43 @@ export class DeviceCommunicator {
   public async writeFile(filename: string, content: Uint8Array): Promise<void> {
     console.log('writeFile:', filename);
     let rawModeActive = false;
-    let fileOpened = false;
     try {
       await this.enterRawMode(); // CTRL+A
       rawModeActive = true;
 
-      // 1 回の実行に全チャンクをまとめて送ると、生成されるバイトコードが
-      // MicroPython の上限を超えて "RuntimeError: bytecode overflow" になる。
-      // そのため open/write/close をそれぞれ別の raw REPL 実行に分割し、
-      // グローバル変数 f 経由でファイルオブジェクトを引き継ぐ。
-      await this.execRaw(`f = open("${filename}", "wb")\r`);
-      fileOpened = true;
-
-      const CHUNK_SIZE = 512;
-      for (let offset = 0; offset < content.length; offset += CHUNK_SIZE) {
-        const part = content.subarray(offset, offset + CHUNK_SIZE);
-        const chunk = JSON.stringify(Array.from(part));
-        await this.execRaw(`f.write(bytes(${chunk}))\r`);
+      // `f.write(bytes([1,2,3,...]))` のように整数リストのリテラルとして送ると、
+      // 要素数が多いファイルではリテラル1つ1つがバイトコード命令を消費し、
+      // "RuntimeError: bytecode overflow" になってしまう。
+      // 16進数文字列（1個の文字列定数）にして ubinascii.unhexlify で復元すれば
+      // バイトコードサイズはほぼ一定になるため、この問題を回避できる。
+      // また、別々の raw REPL 実行（複数回の CTRL+D）に分けると、実行間で
+      // グローバル変数（ここでは f）が引き継がれない場合があるため、
+      // open～write～close を 1 回の実行にまとめて送る。
+      let script = `import ubinascii\rwith open("${filename}", "wb") as f:\r`;
+      const CHUNK_SIZE = 1024;
+      if (content.length === 0) {
+        script += `  pass\r`;
+      } else {
+        for (let offset = 0; offset < content.length; offset += CHUNK_SIZE) {
+          const part = content.subarray(offset, offset + CHUNK_SIZE);
+          const hex = Array.from(part).map((b) => b.toString(16).padStart(2, '0')).join('');
+          script += `  f.write(ubinascii.unhexlify("${hex}"))\r`;
+        }
       }
 
-      await this.execRaw('f.close()\r');
-      fileOpened = false;
+      await this.write(script);
+      await this.serial.sendControl(0x04); // CTRL+D
 
+      // raw REPL のプロトコル: "OK" -> (stdout) -> 0x04 -> (stderr/traceback) -> 0x04
+      await this.startReadLoop('>OK');
+      await this.startReadLoop('\x04'); // stdout 部分
+      const stderr = await this.startReadLoop('\x04'); // stderr/traceback 部分
       await this.exitRawMode();
       rawModeActive = false;
+
+      if (stderr && stderr.trim().length > 0) {
+        throw new Error(`Device reported an error while writing: ${stderr.trim()}`);
+      }
 
       // 書き込み後に検証
       console.log('Verifying written file...');
@@ -134,9 +130,6 @@ export class DeviceCommunicator {
       console.error('Error writing file:', err.message);
       throw new Error(`Failed to write file "${filename}": ${err.message}`);
     } finally {
-      if (fileOpened) {
-        try { await this.execRaw('f.close()\r'); } catch (e) { /* ベストエフォート */ }
-      }
       if (rawModeActive) {
         await this.exitRawMode();
       }

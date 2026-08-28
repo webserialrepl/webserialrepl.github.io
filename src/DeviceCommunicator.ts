@@ -21,14 +21,20 @@ export class DeviceCommunicator {
   }
 
   /**
-   * RAWモードに入る
+   * プログラム実行中に CTRL+A を送っても RAW モードに入れず、以降の応答待ちが
+   * 永遠に解決しない（デッドロック）ため、resetReader で読み取りループを止める前に
+   * ここでチェックして打ち切る。
    */
-  private async enterRawMode(): Promise<void> {
-    // プログラム実行中は CTRL+A を送っても RAW モードに入れず、以降の応答待ちが
-    // 永遠に解決しない（デッドロック）ため、先に停止するよう促してここで打ち切る。
+  private assertNotRunning(): void {
     if (this.serial.getStatus() === 'RUNNING') {
       throw new Error('プログラムの実行中はファイル操作できません。STOP で停止してから再度お試しください。');
     }
+  }
+
+  /**
+   * RAWモードに入る
+   */
+  private async enterRawMode(): Promise<void> {
     if (this.serial.getStatus() !== 'REPL') {
       console.error('Not in REPL mode. Exiting...');
     }
@@ -82,6 +88,7 @@ export class DeviceCommunicator {
    */
   public async writeFile(filename: string, content: Uint8Array): Promise<void> {
     console.log('writeFile:', filename);
+    this.assertNotRunning();
     let rawModeActive = false;
     try {
       await this.resetReader();
@@ -150,6 +157,7 @@ export class DeviceCommunicator {
    */
   public async deleteFile(filename: string): Promise<void> {
     console.log('deleteFile:', filename);
+    this.assertNotRunning();
     try {
       await this.resetReader();
       await this.enterRawMode();
@@ -182,6 +190,7 @@ export class DeviceCommunicator {
    */
   public async renameFile(oldPath: string, newPath: string): Promise<void> {
     console.log('renameFile:', oldPath, '->', newPath);
+    this.assertNotRunning();
     try {
       await this.resetReader();
       await this.enterRawMode();
@@ -245,6 +254,7 @@ private diffContent(originalContent: Uint8Array, writtenContent: Uint8Array): st
  */
 public async readFile(filename: string): Promise<Uint8Array> {
     console.log('readFile:', filename);
+    this.assertNotRunning();
     let fileContent = new Uint8Array();
   
     try {
@@ -304,6 +314,9 @@ public async readFile(filename: string): Promise<Uint8Array> {
 public async getFileList(): Promise<string[]> {
     console.log('getFileList');
     try {
+      // getFileList は呼び出し元 (FileManager.fileList) が try/catch していないため、
+      // ここで throw せず内部の catch で吸収して空配列を返す。
+      this.assertNotRunning();
       await this.resetReader();
       await this.enterRawMode(); // CTRL+A
       // 再帰的にファイルを列挙して、1行ずつ出力する小さな Python スクリプトを実行

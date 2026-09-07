@@ -101,10 +101,12 @@ export class FileManager {
   private contextMenuElement: HTMLElement | null = null;
 
   private setupContextMenu(): void {
-    const filetree = document.getElementById('file-tree');
-    if (!filetree) return;
+    // sl-tree 自体はコンテンツの高さしか持たないため、空白部分での右クリックも
+    // 拾えるように、一回り外側の file-panel 全体にリスナーを付ける
+    const filePanel = document.getElementById('file-panel');
+    if (!filePanel) return;
 
-    filetree.addEventListener('contextmenu', (ev) => {
+    filePanel.addEventListener('contextmenu', (ev) => {
       const target = ev.target as HTMLElement | null;
       if (!target) return;
       ev.preventDefault();
@@ -282,7 +284,15 @@ export class FileManager {
   // 単一の sl-tree-item を作成するユーティリティ
   private createTreeItem(label: string, path: string, isFile: boolean): HTMLElement & { value?: string } {
     const item = document.createElement('sl-tree-item') as HTMLElement & { value?: string };
-    item.textContent = label;
+    if (!isFile) {
+      // 中身が空のフォルダは展開アイコンが出ないため、フォルダだと分かる記号を常に表示する
+      const icon = document.createElement('span');
+      icon.textContent = '📁 ';
+      item.appendChild(icon);
+      item.appendChild(document.createTextNode(label));
+    } else {
+      item.textContent = label;
+    }
     item.setAttribute('data-path', path);
     if (isFile) {
       item.setAttribute('data-is-file', '1');

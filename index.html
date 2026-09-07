@@ -114,6 +114,12 @@
       padding: 2px;
       box-sizing: border-box;
     }
+    /* sl-tree が中身の高さしか持たないと、空白部分での右クリックを拾えないため
+       file-panel いっぱいに広げておく */
+    #file-tree {
+      display: block;
+      min-height: 100%;
+    }
 
 /* editor の幅を調整 */
     #editor-panel {

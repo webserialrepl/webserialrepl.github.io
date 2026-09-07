@@ -131,6 +131,51 @@ export class SerialPortManager {
     this.setUiDisconnected();
   }
 
+  // DTR/RTS によるソフトリセット信号を送信（対応していない場合は何もしない）
+  private async resetBoardSignals(): Promise<void> {
+    if (!(this.serialPort as any)?.setSignals) return;
+    try {
+      console.log('[INFO] ESP32: sending reset signals (RTS/DTR)');
+      await (this.serialPort as any).setSignals({ dataTerminalReady: false, requestToSend: true });
+      await new Promise(r => setTimeout(r, 100));
+      await (this.serialPort as any).setSignals({ dataTerminalReady: true, requestToSend: false });
+      await new Promise(r => setTimeout(r, 500));
+      console.log('[INFO] Reset signals sent');
+    } catch (e) {
+      console.warn('[WARN] setSignals failed or not supported:', e);
+    }
+  }
+
+  // 実行中のプログラムを止めて REPL プロンプト('>>>')が出るまで、
+  // CTRL-C 送信とリセット信号を複数回リトライする。デバイスの状態によって
+  // 1回目で応答しない場合があるため、確実に REPL へ入れるようにする。
+  private async ensureReplPrompt(maxAttempts = 4, timeoutMs = 2500): Promise<boolean> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`[INFO] REPLプロンプト確認 (試行 ${attempt}/${maxAttempts})`);
+      try {
+        for (let i = 0; i < 3; i++) {
+          await this.sendControl(0x03); // CTRL-C: 実行中のプログラムを中断
+          await new Promise(r => setTimeout(r, 100));
+        }
+      } catch (e) {
+        console.warn('[WARN] Failed to send CTRL-C sequence:', e);
+      }
+
+      try {
+        await this.startReadLoop('>>>', undefined, { maxSize: 512, timeoutMs });
+        console.log('[SUCCESS] REPL prompt detected');
+        return true;
+      } catch (e) {
+        console.warn(`[WARN] REPL prompt not detected (attempt ${attempt}/${maxAttempts}):`, e);
+        if (attempt < maxAttempts) {
+          // 次の試行前にハードリセット信号を再送してから CTRL-C をやり直す
+          await this.resetBoardSignals();
+        }
+      }
+    }
+    return false;
+  }
+
   private async connect(): Promise<void> {
 
     this.reading = false; // 読み取り中かどうかのフラグ
@@ -150,47 +195,20 @@ export class SerialPortManager {
 
       // After opening the port, attempt to reset the board (if supported)
       // and send multiple Ctrl-C to try to enter REPL mode. Then start
-      // the background read loop and wait briefly for the prompt.
+      // the background read loop and repeat until the prompt is confirmed.
       try {
-        // Soft reset via DTR/RTS if supported
-        if ((port as any).setSignals) {
-          try {
-            console.log('[INFO] ESP32: sending reset signals (RTS/DTR)');
-            await (port as any).setSignals({ dataTerminalReady: false, requestToSend: true });
-            await new Promise(r => setTimeout(r, 100));
-            await (port as any).setSignals({ dataTerminalReady: true, requestToSend: false });
-            await new Promise(r => setTimeout(r, 500));
-            console.log('[INFO] Reset signals sent');
-          } catch (e) {
-            console.warn('[WARN] setSignals failed or not supported:', e);
-          }
-        }
-
-        // Send multiple CTRL-C to interrupt any running program and return to REPL
-        console.log('[INFO] Sending multiple CTRL-C to enter REPL');
-        try {
-          for (let i = 0; i < 3; i++) {
-            await this.sendControl(0x03);
-            await new Promise(r => setTimeout(r, 100));
-          }
-          console.log('[INFO] CTRL-C sequence sent');
-        } catch (e) {
-          console.warn('[WARN] Failed to send CTRL-C sequence:', e);
-        }
+        await this.resetBoardSignals();
 
         // Start background read loop (fire-and-forget)
         this.startReadLoop(false, undefined);
 
-        // Wait for REPL prompt '>>>' with a timeout
-        try {
-          const replPromise = this.startReadLoop('>>>', undefined, { maxSize: 512 });
-          await Promise.race([
-            replPromise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('REPL wait timeout')), 5000)),
-          ]);
-          console.log('[SUCCESS] REPL prompt detected');
-        } catch (e) {
-          console.warn('[WARN] REPL prompt not detected within timeout:', e);
+        // REPL プロンプトを検出できるまでリセット＋CTRL-C を繰り返し、確実に REPL へ遷移させる
+        const replReady = await this.ensureReplPrompt();
+        if (!replReady) {
+          console.warn('[WARN] REPL prompt not detected after multiple attempts.');
+          if (this.terminalOutputCallback) {
+            this.terminalOutputCallback('\x1b[33mREPLプロンプトを検出できませんでした。デバイスの状態をご確認ください。\x1b[0m\r\n');
+          }
         }
       } catch (e) {
         console.error('[ERROR] REPL initialization sequence failed:', e);
@@ -308,7 +326,7 @@ export class SerialPortManager {
    * シリアルポートからデータを読み取り、処理する
    * @param {ReadableStreamDefaultReader} reader - シリアルポートのリーダー
    */
-  public async startReadLoop(targetString: string | false = false, command:any, options?: { maxSize?: number }): Promise<string> {
+  public async startReadLoop(targetString: string | false = false, command:any, options?: { maxSize?: number; timeoutMs?: number }): Promise<string> {
     // 既にバックグラウンドループを走らせるようにしておき、
     // targetString が指定された場合は waiter を登録して待機する動作に変更します。
 
@@ -342,7 +360,19 @@ export class SerialPortManager {
     // targetString が指定されたら waiter を作成して待つ
     return await new Promise<string>((resolve, reject) => {
       const maxSize = options?.maxSize ?? DEFAULT_MAX_RESULT;
-      this.waiters.push({ target: targetString as string, resolve, reject, maxSize });
+      const waiter = { target: targetString as string, resolve, reject, maxSize };
+      this.waiters.push(waiter);
+      // timeoutMs 指定時は、時間経過後に waiter を確実に取り除いてから reject する
+      // （放置すると後続の受信データを誤って消費してしまうため）
+      if (options?.timeoutMs) {
+        setTimeout(() => {
+          const idx = this.waiters.indexOf(waiter);
+          if (idx >= 0) {
+            this.waiters.splice(idx, 1);
+            reject(new Error('startReadLoop timeout'));
+          }
+        }, options.timeoutMs);
+      }
     });
   }
 

@@ -114,6 +114,12 @@
       padding: 2px;
       box-sizing: border-box;
     }
+    /* sl-tree が中身の高さしか持たないと、空白部分での右クリックを拾えないため
+       file-panel いっぱいに広げておく */
+    #file-tree {
+      display: block;
+      min-height: 100%;
+    }
 
 /* editor の幅を調整 */
     #editor-panel {
@@ -161,7 +167,7 @@
     }
 
   </style>
-  <script type="module" crossorigin src="/assets/index.b3e501a1.js"></script>
+  <script type="module" crossorigin src="/assets/index.7192e375.js"></script>
   <link rel="stylesheet" href="/assets/index.0c2b6a66.css">
 <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
 <body>

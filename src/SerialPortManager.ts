@@ -81,6 +81,12 @@ export class SerialPortManager {
   // シリアル接続の切断処理
   private async cleanup() {
     try { await this.stopReadLoop(); } catch {}
+    // writable ストリームがロックされたままだと close() が失敗し、実際にはポートが
+    // 閉じられずに次回接続時に「already open」エラーとなるため、必ず解放しておく
+    if (this.serialWriter) {
+      try { this.serialWriter.releaseLock(); } catch (e) { /* ignore */ }
+      this.serialWriter = null;
+    }
     try {
       if (this.serialPort) {
         this.serialPort.removeEventListener?.('disconnect', this.onDisconnect);

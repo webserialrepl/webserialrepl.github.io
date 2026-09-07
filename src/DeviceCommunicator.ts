@@ -8,7 +8,7 @@ export class DeviceCommunicator {
   }
 
 
-  private async startReadLoop(targetString: string | false, options?: { maxSize?: number }): Promise<string> {
+  private async startReadLoop(targetString: string | false, options?: { maxSize?: number; timeoutMs?: number }): Promise<string> {
     return await this.serial.startReadLoop(targetString, false, options);
   }
 
@@ -49,6 +49,14 @@ export class DeviceCommunicator {
   private async exitRawMode(): Promise<void> {
     this.serial.setTerminalOutputEnabled(true);
     await this.serial.sendControl(0x02); // CTRL+B: RAWモードを抜ける
+    // ここで通常 REPL のプロンプト('>>>')を待たずに戻ると、直後に呼ばれる
+    // 別の操作の assertNotRunning() がまだ更新されていない古い状態（RUNNING）を
+    // 見てしまい、誤って「実行中」エラーになることがあるため、少し待って確認する
+    try {
+      await this.startReadLoop('>>>', { maxSize: 512, timeoutMs: 1000 });
+    } catch (e) {
+      console.warn('[WARN] Did not observe REPL prompt after exiting raw mode:', e);
+    }
   }
 
   /**

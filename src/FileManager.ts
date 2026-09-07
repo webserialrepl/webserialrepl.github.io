@@ -107,15 +107,17 @@ export class FileManager {
     filetree.addEventListener('contextmenu', (ev) => {
       const target = ev.target as HTMLElement | null;
       if (!target) return;
+      ev.preventDefault();
       // sl-tree-item の要素を探す
       const item = target.closest && (target.closest('sl-tree-item') as HTMLElement | null);
-      if (!item) return;
+      if (!item) {
+        // 項目のない空白部分を右クリックした場合はルートディレクトリを対象にする
+        this.showContextMenu(ev.clientX, ev.clientY, '', false);
+        return;
+      }
       const isFile = item.getAttribute && item.getAttribute('data-is-file') === '1';
-      if (!isFile) return; // ファイルのみ対象
-
-      ev.preventDefault();
       const path = item.getAttribute('data-path') || '';
-      this.showContextMenu(ev.clientX, ev.clientY, path);
+      this.showContextMenu(ev.clientX, ev.clientY, path, isFile);
     });
 
     // クリックで非表示
@@ -123,7 +125,7 @@ export class FileManager {
     window.addEventListener('blur', () => this.hideContextMenu());
   }
 
-  private showContextMenu(x: number, y: number, path: string) {
+  private showContextMenu(x: number, y: number, path: string, isFile: boolean) {
     this.hideContextMenu();
     const menu = document.createElement('div');
     menu.style.position = 'fixed';
@@ -135,56 +137,98 @@ export class FileManager {
     menu.style.padding = '4px';
     menu.style.borderRadius = '4px';
 
-    const renameBtn = document.createElement('div');
-    renameBtn.textContent = '名前を変更';
-    renameBtn.style.padding = '6px 12px';
-    renameBtn.style.cursor = 'pointer';
-    renameBtn.onclick = async (e) => {
-      e.stopPropagation();
-      this.hideContextMenu();
-      const newName = prompt('新しいファイル名を入力：', path.split('/').pop() || path);
-      if (!newName) return;
-      // 新しいフルパスは同じディレクトリに置く
-      const dir = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : '';
-      const newPath = dir ? `${dir}/${newName}` : newName;
-      if (this.fileExists(newPath)) {
-        alert('同名のファイルが既に存在します');
-        return;
-      }
-      try {
-        await this.device.renameFile(path, newPath);
-        await this.fileList();
-      } catch (err) {
-        console.error('rename failed', err);
-        try { this.terminal.logToTerminal(`Rename failed: ${String(err)}`, 'error'); } catch {}
-        alert('名前変更に失敗しました: ' + String(err));
-      }
+    const addMenuItem = (label: string, onClick: (e: MouseEvent) => void) => {
+      const el = document.createElement('div');
+      el.textContent = label;
+      el.style.padding = '6px 12px';
+      el.style.cursor = 'pointer';
+      el.onclick = onClick;
+      menu.appendChild(el);
+      return el;
     };
 
-    const deleteBtn = document.createElement('div');
-    deleteBtn.textContent = '削除';
-    deleteBtn.style.padding = '6px 12px';
-    deleteBtn.style.cursor = 'pointer';
-    deleteBtn.onclick = async (e) => {
-      e.stopPropagation();
-      this.hideContextMenu();
-      const ok = confirm(`本当にファイルを削除しますか？\n${path}`);
-      if (!ok) return;
-      try {
-        await this.device.deleteFile(path);
-        await this.fileList();
-      } catch (err) {
-        console.error('delete failed', err);
-        try { this.terminal.logToTerminal(`Delete failed: ${String(err)}`, 'error'); } catch {}
-        alert('削除に失敗しました: ' + String(err));
-      }
-    };
+    if (isFile) {
+      addMenuItem('名前を変更', async (e) => {
+        e.stopPropagation();
+        this.hideContextMenu();
+        const newName = prompt('新しいファイル名を入力：', path.split('/').pop() || path);
+        if (!newName) return;
+        // 新しいフルパスは同じディレクトリに置く
+        const dir = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : '';
+        const newPath = dir ? `${dir}/${newName}` : newName;
+        if (this.fileExists(newPath)) {
+          alert('同名のファイルが既に存在します');
+          return;
+        }
+        try {
+          await this.device.renameFile(path, newPath);
+          await this.fileList();
+        } catch (err) {
+          console.error('rename failed', err);
+          try { this.terminal.logToTerminal(`Rename failed: ${String(err)}`, 'error'); } catch {}
+          alert('名前変更に失敗しました: ' + String(err));
+        }
+      });
 
-    menu.appendChild(renameBtn);
-    menu.appendChild(deleteBtn);
+      addMenuItem('削除', async (e) => {
+        e.stopPropagation();
+        this.hideContextMenu();
+        const ok = confirm(`本当にファイルを削除しますか？\n${path}`);
+        if (!ok) return;
+        try {
+          await this.device.deleteFile(path);
+          await this.fileList();
+        } catch (err) {
+          console.error('delete failed', err);
+          try { this.terminal.logToTerminal(`Delete failed: ${String(err)}`, 'error'); } catch {}
+          alert('削除に失敗しました: ' + String(err));
+        }
+      });
+    } else {
+      // フォルダ、またはツリーの空白部分（= ルートディレクトリ）を右クリックした場合
+      const dirPath = path; // フォルダ自身のパス、ルートの場合は ''
+
+      addMenuItem('新しいフォルダを作成', async (e) => {
+        e.stopPropagation();
+        this.hideContextMenu();
+        const name = prompt('新しいフォルダ名を入力：');
+        if (!name) return;
+        const newPath = dirPath ? `${dirPath}/${name}` : name;
+        try {
+          await this.device.createDirectory(newPath);
+          await this.fileList();
+        } catch (err) {
+          console.error('create directory failed', err);
+          try { this.terminal.logToTerminal(`Create directory failed: ${String(err)}`, 'error'); } catch {}
+          alert('フォルダの作成に失敗しました: ' + String(err));
+        }
+      });
+
+      addMenuItem('新しい空のファイルを作成', async (e) => {
+        e.stopPropagation();
+        this.hideContextMenu();
+        const name = prompt('新しいファイル名を入力：');
+        if (!name) return;
+        const newPath = dirPath ? `${dirPath}/${name}` : name;
+        if (this.fileExists(newPath)) {
+          alert('同名のファイルが既に存在します');
+          return;
+        }
+        try {
+          await this.device.createEmptyFile(newPath);
+          await this.fileList();
+        } catch (err) {
+          console.error('create file failed', err);
+          try { this.terminal.logToTerminal(`Create file failed: ${String(err)}`, 'error'); } catch {}
+          alert('ファイルの作成に失敗しました: ' + String(err));
+        }
+      });
+    }
+
     document.body.appendChild(menu);
     this.contextMenuElement = menu;
   }
+
 
   private hideContextMenu() {
     if (this.contextMenuElement) {

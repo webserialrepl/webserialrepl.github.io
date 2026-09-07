@@ -218,6 +218,76 @@ export class DeviceCommunicator {
     }
   }
 
+  // Python の文字列リテラルに埋め込む際、引用符やバックスラッシュでスクリプトが壊れないようにエスケープする
+  private escapePyString(s: string): string {
+    return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  }
+
+  /**
+   * デバイス上にディレクトリを作成する
+   */
+  public async createDirectory(path: string): Promise<void> {
+    console.log('createDirectory:', path);
+    this.assertNotRunning();
+    try {
+      await this.resetReader();
+      await this.enterRawMode();
+      await this.write('import os\r');
+      await this.write(`try:\r  os.mkdir("${this.escapePyString(path)}")\r  print("__MKDIR_OK__")\rexcept Exception as e:\r  print("__MKDIR_FAILED__:"+str(e))\r`);
+      await this.serial.sendControl(0x04);
+
+      await this.startReadLoop('>OK');
+      const result = await this.startReadLoop('\x04');
+      this.startReadLoop(false);
+      await this.exitRawMode();
+
+      if (!result) throw new Error('No response from device');
+      if (result.indexOf('__MKDIR_OK__') >= 0) {
+        return;
+      }
+      if (result.indexOf('__MKDIR_FAILED__:') >= 0) {
+        const msg = result.split('__MKDIR_FAILED__:')[1] || 'unknown';
+        throw new Error(String(msg).trim());
+      }
+      throw new Error('Unexpected response: ' + result);
+    } catch (error) {
+      console.error('Error creating directory:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * デバイス上に空のファイルを作成する
+   */
+  public async createEmptyFile(path: string): Promise<void> {
+    console.log('createEmptyFile:', path);
+    this.assertNotRunning();
+    try {
+      await this.resetReader();
+      await this.enterRawMode();
+      await this.write(`try:\r  open("${this.escapePyString(path)}", "wb").close()\r  print("__TOUCH_OK__")\rexcept Exception as e:\r  print("__TOUCH_FAILED__:"+str(e))\r`);
+      await this.serial.sendControl(0x04);
+
+      await this.startReadLoop('>OK');
+      const result = await this.startReadLoop('\x04');
+      this.startReadLoop(false);
+      await this.exitRawMode();
+
+      if (!result) throw new Error('No response from device');
+      if (result.indexOf('__TOUCH_OK__') >= 0) {
+        return;
+      }
+      if (result.indexOf('__TOUCH_FAILED__:') >= 0) {
+        const msg = result.split('__TOUCH_FAILED__:')[1] || 'unknown';
+        throw new Error(String(msg).trim());
+      }
+      throw new Error('Unexpected response: ' + result);
+    } catch (error) {
+      console.error('Error creating file:', error);
+      throw error;
+    }
+  }
+
 /**
  * 書き込んだ内容とデバイス上の内容を比較して検証
  * @param {Uint8Array} originalContent - 書き込んだ内容

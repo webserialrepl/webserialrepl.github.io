@@ -363,6 +363,17 @@ export class SerialPortManager {
       this.receiveBuffer = buffered + this.receiveBuffer;
     }
 
+    // waiter 登録前に既に受信済みのバッファへ target が含まれていないか確認する
+    // （waiter が存在しない間に到着したデータは tail バッファに残るだけで、
+    // 新規データが来ないと waiter のマッチ処理が走らずタイムアウトしてしまうため）
+    const existingIndex = this.receiveBuffer.indexOf(targetString);
+    if (existingIndex >= 0) {
+      const before = this.receiveBuffer.slice(0, existingIndex);
+      this.leftoverData = this.receiveBuffer.slice(existingIndex + targetString.length);
+      this.receiveBuffer = '';
+      return before;
+    }
+
     // targetString が指定されたら waiter を作成して待つ
     return await new Promise<string>((resolve, reject) => {
       const maxSize = options?.maxSize ?? DEFAULT_MAX_RESULT;

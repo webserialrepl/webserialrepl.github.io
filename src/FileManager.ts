@@ -225,6 +225,30 @@ export class FileManager {
           alert('ファイルの作成に失敗しました: ' + String(err));
         }
       });
+
+      if (dirPath) {
+        // ルートの空白部分ではなく、実際のフォルダを右クリックした場合のみ削除を許可する
+        addMenuItem('フォルダを削除', async (e) => {
+          e.stopPropagation();
+          this.hideContextMenu();
+          // フォルダ自身のマーカー("path/")以外に、その配下を表すエントリがあるかを確認する
+          const hasContents = this.files.some((f) => f !== `${dirPath}/` && f.startsWith(`${dirPath}/`));
+          if (hasContents) {
+            alert('フォルダ内にファイルがあるため削除できません。先にフォルダ内のファイルを削除してください。');
+            return;
+          }
+          const ok = confirm(`本当にフォルダを削除しますか？\n${dirPath}`);
+          if (!ok) return;
+          try {
+            await this.device.deleteDirectory(dirPath);
+            await this.fileList();
+          } catch (err) {
+            console.error('delete directory failed', err);
+            try { this.terminal.logToTerminal(`Delete directory failed: ${String(err)}`, 'error'); } catch {}
+            alert('フォルダの削除に失敗しました: ' + String(err));
+          }
+        });
+      }
     }
 
     document.body.appendChild(menu);

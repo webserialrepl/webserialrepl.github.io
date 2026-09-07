@@ -186,6 +186,39 @@ export class DeviceCommunicator {
   }
 
   /**
+   * デバイス上のディレクトリを削除する（空でない場合は失敗する）
+   */
+  public async deleteDirectory(path: string): Promise<void> {
+    console.log('deleteDirectory:', path);
+    this.assertNotRunning();
+    try {
+      await this.resetReader();
+      await this.enterRawMode();
+      await this.write('import os\r');
+      await this.write(`try:\r  os.rmdir("${this.escapePyString(path)}")\r  print(\"__RMDIR_OK__\")\rexcept Exception as e:\r  print(\"__RMDIR_FAILED__:\"+str(e))\r`);
+      await this.serial.sendControl(0x04);
+
+      await this.startReadLoop('>OK');
+      const result = await this.startReadLoop('\x04');
+      this.startReadLoop(false);
+      await this.exitRawMode();
+
+      if (!result) throw new Error('No response from device');
+      if (result.indexOf('__RMDIR_OK__') >= 0) {
+        return;
+      }
+      if (result.indexOf('__RMDIR_FAILED__:') >= 0) {
+        const msg = result.split('__RMDIR_FAILED__:')[1] || 'unknown';
+        throw new Error(String(msg).trim());
+      }
+      throw new Error('Unexpected response: ' + result);
+    } catch (error) {
+      console.error('Error deleting directory:', error);
+      throw error;
+    }
+  }
+
+  /**
    * デバイス上のファイルをリネームする
    */
   public async renameFile(oldPath: string, newPath: string): Promise<void> {

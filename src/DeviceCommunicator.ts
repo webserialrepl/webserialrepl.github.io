@@ -320,21 +320,26 @@ public async getFileList(): Promise<string[]> {
       await this.resetReader();
       await this.enterRawMode(); // CTRL+A
       // 再帰的にファイルを列挙して、1行ずつ出力する小さな Python スクリプトを実行
-      await this.write('import os\r');
-      await this.write('def walk(d="."):\r');
-      await this.write('  l=[]\r');
-      await this.write('  for name in os.listdir(d):\r');
-      await this.write('    path = d + "/" + name if d!="." else name\r');
-      await this.write('    try:\r');
-      await this.write('      if os.stat(path)[0] & 0x4000:\r');
-      await this.write('        l.extend(walk(path))\r');
-      await this.write('      else:\r');
-      await this.write('        l.append(path)\r');
-      await this.write('    except:\r');
-      await this.write('      pass\r');
-      await this.write('  return l\r');
-      await this.write('for p in walk():\r');
-      await this.write('  print(p)\r');
+      // 1行ずつ個別に write() すると、行と行の間で発生する await の隙間で
+      // 一部の行が欠落・分断されることがあり、実行結果（列挙されるファイル数）が
+      // 不安定になる。1回の write にまとめて送ることで安定させる。
+      const script =
+        'import os\r' +
+        'def walk(d="."):\r' +
+        '  l=[]\r' +
+        '  for name in os.listdir(d):\r' +
+        '    path = d + "/" + name if d!="." else name\r' +
+        '    try:\r' +
+        '      if os.stat(path)[0] & 0x4000:\r' +
+        '        l.extend(walk(path))\r' +
+        '      else:\r' +
+        '        l.append(path)\r' +
+        '    except:\r' +
+        '      pass\r' +
+        '  return l\r' +
+        'for p in walk():\r' +
+        '  print(p)\r';
+      await this.write(script);
       await this.serial.sendControl(0x04); // CTRL+D
 
       // プロンプトを読み飛ばす

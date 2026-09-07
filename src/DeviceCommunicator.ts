@@ -462,7 +462,9 @@ public async getFileList(): Promise<string[]> {
       return files;
     } catch (error) {
       console.error('Error fetching file list:', error);
-      return [];
+      // 通信エラーと「本当にファイルが0個」の状態を呼び出し側で区別できるように、
+      // ここで空配列に握りつぶさず再送出する
+      throw error;
     }
   }
 

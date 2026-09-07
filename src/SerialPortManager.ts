@@ -30,6 +30,8 @@ export class SerialPortManager {
   private leftoverData: string = ''; // 未処理のデータを保持
   private replStatus: 'REPL' | 'RUNNING' | null = null;
   private decoder: TextDecoder;
+  // true の間は REPL_STATUS_CHANGED イベントの発火を抑制する（接続ハンドシェイク中の競合防止）
+  private handshakeInProgress: boolean = false;
 
 
   constructor(callback: ((chunk: string) => void) | null = null) {
@@ -203,6 +205,7 @@ export class SerialPortManager {
       // and send multiple Ctrl-C to try to enter REPL mode. Then start
       // the background read loop and repeat until the prompt is confirmed.
       try {
+        this.handshakeInProgress = true;
         await this.resetBoardSignals();
 
         // Start background read loop (fire-and-forget)
@@ -218,6 +221,10 @@ export class SerialPortManager {
         }
       } catch (e) {
         console.error('[ERROR] REPL initialization sequence failed:', e);
+      } finally {
+        // ハンドシェイク完了。抑制していたステータスをここで確定的に一度だけ通知する
+        this.handshakeInProgress = false;
+        document.dispatchEvent(new CustomEvent('REPL_STATUS_CHANGED', { detail: { status: this.replStatus ?? 'RUNNING' } }));
       }
 
       port.addEventListener?.('disconnect', this.onDisconnect);
@@ -274,7 +281,12 @@ export class SerialPortManager {
     if (this.replStatus !== newStatus) {
       this.replStatus = newStatus;
       console.log(`Status changed to: ${newStatus}`);
-      document.dispatchEvent(new CustomEvent('REPL_STATUS_CHANGED', { detail: { status: newStatus } }));
+      // ハンドシェイク中（ensureReplPrompt 実行中）は、リーダーや waiters を
+      // 共有状態のまま fileList 等が並行して走ってしまい競合するため、
+      // ハンドシェイクが確定するまでイベント通知を抑制する
+      if (!this.handshakeInProgress) {
+        document.dispatchEvent(new CustomEvent('REPL_STATUS_CHANGED', { detail: { status: newStatus } }));
+      }
     }
   }
   public getStatus(): 'REPL' | 'RUNNING' | null {

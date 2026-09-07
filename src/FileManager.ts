@@ -201,12 +201,18 @@ export class FileManager {
   // ファイルパス配列から階層ツリーを構築して DOM に追加する
   private buildTree(paths: string[], root: HTMLElement) {
     for (const fullPath of paths) {
-      const segments = fullPath.split('/');
+      // 末尾が "/" のエントリは中身が空でも列挙されたディレクトリ自身を表す
+      const isDirEntry = fullPath.endsWith('/');
+      const cleanPath = isDirEntry ? fullPath.slice(0, -1) : fullPath;
+      if (!cleanPath) continue;
+      const segments = cleanPath.split('/');
       let parent: HTMLElement = root;
       let accum = '';
       for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
         accum = accum ? `${accum}/${seg}` : seg;
+        const isLast = i === segments.length - 1;
+        const isFile = isLast && !isDirEntry;
 
         // 既に同じパスを表す子要素があるか検索
         const existing = Array.from(parent.children).find((c) => (c as HTMLElement).getAttribute && (c as HTMLElement).getAttribute('data-path') === accum) as HTMLElement | undefined;
@@ -215,8 +221,8 @@ export class FileManager {
           continue;
         }
 
-        const item = this.createTreeItem(seg, accum, i === segments.length - 1);
-        if (i < segments.length - 1) {
+        const item = this.createTreeItem(seg, accum, isFile);
+        if (!isLast || !isFile) {
           // ディレクトリは親内で既存のファイルの前に挿入する
           const firstFileChild = Array.from(parent.children).find(c => (c as HTMLElement).getAttribute && (c as HTMLElement).getAttribute('data-is-file') === '1') as HTMLElement | undefined;
           parent.insertBefore(item, firstFileChild || null);

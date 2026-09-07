@@ -331,6 +331,8 @@ public async getFileList(): Promise<string[]> {
         '    path = d + "/" + name if d!="." else name\r' +
         '    try:\r' +
         '      if os.stat(path)[0] & 0x4000:\r' +
+        // ディレクトリ自身も末尾に "/" を付けて列挙する（中身が空でも表示できるようにするため）
+        '        l.append(path + "/")\r' +
         '        l.extend(walk(path))\r' +
         '      else:\r' +
         '        l.append(path)\r' +

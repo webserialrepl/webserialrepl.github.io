@@ -148,6 +148,12 @@ stopButton.addEventListener('click', async ()=> {
   await serialPortManager.sendControl(0x02); // CTRL+B
 });
 
+// RESETボタン：REPL に CTRL+D を送ってソフトリセットする
+const resetButton = document.getElementById('resetButton') as HTMLButtonElement;
+resetButton.addEventListener('click', async () => {
+  await serialPortManager.sendControl(0x04); // CTRL+D
+});
+
 // シリアル通信の接続状態に応じて stopButton を有効化/無効化
 document.addEventListener(SerialPortManager.EVENT_CONNECTED, () => {
   console.log("<Connected> event");
@@ -155,8 +161,14 @@ document.addEventListener(SerialPortManager.EVENT_CONNECTED, () => {
 });
 document.addEventListener(SerialPortManager.EVENT_DISCONNECTED, () => {
   stopButton.disabled = true; // 切断中なら無効化
+  resetButton.disabled = true; // 切断中なら無効化
   filemgr.disableAllButtons(); // FileManager のボタンを無効化
+});
+// プログラム実行中は RESET ボタンを無効化する（REPL 待機中のみ有効）
+document.addEventListener('REPL_STATUS_CHANGED', (e: any) => {
+  resetButton.disabled = e.detail?.status !== 'REPL';
 });
 // 初期状態で無効化
 stopButton.disabled = true;
+resetButton.disabled = true;
 commands.emit('new'); // 最初に新規タブを開く

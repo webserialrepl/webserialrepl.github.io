@@ -172,6 +172,11 @@
       border: 1px solid var(--sl-color-neutral-300);
       border-radius: var(--sl-border-radius-medium);
     }
+    #github-copy-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
     #github-folder-url {
       width: min(700px, 100%);
     }
@@ -187,7 +192,7 @@
     }
 
   </style>
-  <script type="module" crossorigin src="/assets/index.17511bac.js"></script>
+  <script type="module" crossorigin src="/assets/index.afdd4bc5.js"></script>
   <link rel="stylesheet" href="/assets/index.0c2b6a66.css">
 <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
 <body>
@@ -225,9 +230,9 @@
   </div>
 
   <section id="github-copy-panel" hidden>
-    <div>
+    <div id="github-copy-header">
       <strong>GitHub フォルダをデバイスのルートへ書き込む</strong>
-      <button id="github-copy-close-button" type="button" aria-label="閉じる">×</button>
+      <button id="github-copy-close-button" type="button">×とじる</button>
     </div>
     <div>
       <label for="github-folder-url">フォルダ URL</label>

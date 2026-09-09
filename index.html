@@ -187,7 +187,7 @@
     }
 
   </style>
-  <script type="module" crossorigin src="/assets/index.2eb4db4e.js"></script>
+  <script type="module" crossorigin src="/assets/index.17511bac.js"></script>
   <link rel="stylesheet" href="/assets/index.0c2b6a66.css">
 <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
 <body>
@@ -205,6 +205,7 @@
       <button id="runCodeButton" class="button-run" disabled>RUN</button>
       <button id="stopButton" class="button-stop" disabled>STOP</button>
       <button id="resetButton" class="button-stop" disabled>RESET</button>
+      <button id="github-copy-open-button" disabled>GitHubから書込</button>
     </div>
     <div class="info">
       <a href="https://github.com/webserialrepl/webserialrepl.github.io">GitHub</a>
@@ -223,8 +224,11 @@
     </div>
   </div>
 
-  <section id="github-copy-panel">
-    <strong>GitHub フォルダをデバイスのルートへ書き込む</strong>
+  <section id="github-copy-panel" hidden>
+    <div>
+      <strong>GitHub フォルダをデバイスのルートへ書き込む</strong>
+      <button id="github-copy-close-button" type="button" aria-label="閉じる">×</button>
+    </div>
     <div>
       <label for="github-folder-url">フォルダ URL</label>
       <input id="github-folder-url" type="url" value="https://github.com/jcodeorg/esp32-ble-logger/tree/main/firmware">

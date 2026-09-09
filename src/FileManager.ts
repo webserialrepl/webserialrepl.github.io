@@ -2,11 +2,13 @@ import { DeviceCommunicator } from './DeviceCommunicator';
 import { ReplTerminal } from './ReplTerminal';
 
 export class FileManager {
+  private static readonly defaultGithubUrl = 'https://github.com/jcodeorg/esp32-ble-logger/tree/main/firmware';
   private device: DeviceCommunicator;
   private terminal: ReplTerminal; // ReplTerminal のインスタンスを保持
   private selectedFile: string | null = null; // 選択されたファイル名を保持
   private fileTreeDisplayed = false; // ファイルツリーが表示されているかどうか
   private files: string[] = []; // ファイル一覧を保持
+  private githubFiles: Array<{ path: string; size: number; downloadUrl: string }> = [];
 
   constructor(
     device: DeviceCommunicator,
@@ -26,15 +28,18 @@ export class FileManager {
       const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
       const newFileButton = document.getElementById('newFileButton') as HTMLButtonElement;
       const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
+      const githubPreviewButton = document.getElementById('github-preview-button') as HTMLButtonElement;
+      const githubWriteButton = document.getElementById('github-write-button') as HTMLButtonElement;
       const customEvent = event as CustomEvent; // CustomEvent 型にキャスト
       const { status } = customEvent.detail;
-      const buttons = [refreshButton, saveFileButton, newFileButton, runCodeButton];
+      const buttons = [refreshButton, saveFileButton, newFileButton, runCodeButton, githubPreviewButton, githubWriteButton];
       if (status === 'REPL') {
         console.log("<REPL> mode activated");
         if (!this.fileTreeDisplayed) {
           await this.fileList();      // デバイスの中のファイル一覧を表示
         }
         buttons.forEach((button) => (button.disabled = false)); // ボタンを有効化
+        githubWriteButton.disabled = this.githubFiles.length === 0;
       } else {
         buttons.forEach((button) => (button.disabled = true)); // ボタンを無効化
       }
@@ -55,6 +60,8 @@ export class FileManager {
     const saveFileButton = document.getElementById('saveFileButton') as HTMLButtonElement;
     const newFileButton = document.getElementById('newFileButton') as HTMLButtonElement;
     const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
+    const githubPreviewButton = document.getElementById('github-preview-button') as HTMLButtonElement;
+    const githubWriteButton = document.getElementById('github-write-button') as HTMLButtonElement;
 
     // 初期状態で無効化
     // fileSelect.disabled = true;
@@ -62,6 +69,8 @@ export class FileManager {
     saveFileButton.disabled = true;
     newFileButton.disabled = true;
     runCodeButton.disabled = true;
+    githubPreviewButton.disabled = true;
+    githubWriteButton.disabled = true;
 
     // 既存のファイルツリーを安全にクリア（要素が存在する場合のみ）
     const filetreeElement = document.getElementById('file-tree');
@@ -72,6 +81,104 @@ export class FileManager {
       }
     }
     this.fileTreeDisplayed = false; // ファイルツリーが表示されているかどうか
+  }
+
+  /** GitHub の tree URL を解析し、対象ツリーを取得する。 */
+  private parseGithubUrl(value: string): { owner: string; repo: string; branch: string; directory: string } {
+    const url = new URL(value.trim());
+    if (url.hostname !== 'github.com') throw new Error('github.com の URL を指定してください。');
+    const parts = url.pathname.split('/').filter(Boolean);
+    const treeIndex = parts.indexOf('tree');
+    if (parts.length < 4 || treeIndex !== 2 || !parts[0] || !parts[1] || !parts[treeIndex + 1]) {
+      throw new Error('GitHub のフォルダ URL（/owner/repository/tree/branch/path）を指定してください。');
+    }
+    return {
+      owner: parts[0],
+      repo: parts[1].replace(/\.git$/, ''),
+      branch: parts[treeIndex + 1],
+      directory: parts.slice(treeIndex + 2).join('/'),
+    };
+  }
+
+  private async fetchGithubFiles(value: string): Promise<Array<{ path: string; size: number; downloadUrl: string }>> {
+    const { owner, repo, branch, directory } = this.parseGithubUrl(value);
+    const treeUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
+    const response = await fetch(treeUrl, { headers: { Accept: 'application/vnd.github+json' } });
+    if (!response.ok) throw new Error(`GitHub API エラー (${response.status}): ${await response.text()}`);
+    const tree = await response.json() as { truncated?: boolean; tree?: Array<{ path: string; type: string; size?: number }> };
+    if (tree.truncated) throw new Error('GitHub のファイル数が多すぎるため一覧を取得できませんでした。');
+    const prefix = directory ? `${directory}/` : '';
+    const files = (tree.tree || []).filter((entry) => entry.type === 'blob' && entry.path.startsWith(prefix));
+    if (files.length === 0) throw new Error('指定フォルダに書き込めるファイルがありません。');
+    return files.map((entry) => ({
+      path: entry.path.slice(prefix.length),
+      size: entry.size || 0,
+      downloadUrl: `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/${entry.path.split('/').map(encodeURIComponent).join('/')}`,
+    }));
+  }
+
+  public async previewGithubFolder(): Promise<void> {
+    const urlInput = document.getElementById('github-folder-url') as HTMLInputElement;
+    const fileList = document.getElementById('github-copy-files');
+    const progress = document.getElementById('github-copy-progress');
+    if (!urlInput || !fileList || !progress) return;
+    fileList.textContent = 'GitHub からファイル一覧を取得しています...';
+    progress.textContent = '';
+    this.githubFiles = [];
+    try {
+      this.githubFiles = await this.fetchGithubFiles(urlInput.value || FileManager.defaultGithubUrl);
+      const totalBytes = this.githubFiles.reduce((sum, file) => sum + file.size, 0);
+      fileList.textContent = `${this.githubFiles.length} ファイル、${totalBytes.toLocaleString()} bytes\n\n${this.githubFiles.map((file) => `${file.path} (${file.size.toLocaleString()} bytes)`).join('\n')}`;
+      progress.textContent = '一覧を確認しました。内容を確認してから書き込みボタンを押してください。';
+      const writeButton = document.getElementById('github-write-button') as HTMLButtonElement;
+      writeButton.disabled = false;
+    } catch (error) {
+      fileList.textContent = 'ファイル一覧を取得できませんでした。';
+      progress.textContent = `エラー: ${String(error)}`;
+      this.terminal.logToTerminal(`GitHub の一覧取得エラー: ${String(error)}`, 'error');
+    }
+  }
+
+  public async writeGithubFolder(): Promise<void> {
+    if (this.githubFiles.length === 0) return;
+    if (!window.confirm(`${this.githubFiles.length} ファイルをデバイスのルートへ書き込みます。続行しますか？`)) return;
+    const progress = document.getElementById('github-copy-progress');
+    if (!progress) return;
+    const writeButton = document.getElementById('github-write-button') as HTMLButtonElement;
+    writeButton.disabled = true;
+    const directories = new Set<string>();
+    this.githubFiles.forEach((file) => {
+      const parts = file.path.split('/');
+      parts.pop();
+      for (let i = 1; i <= parts.length; i++) directories.add(parts.slice(0, i).join('/'));
+    });
+    try {
+      const sortedDirectories = Array.from(directories).sort((a, b) => a.split('/').length - b.split('/').length);
+      for (const directory of sortedDirectories) {
+        progress.textContent = `フォルダ作成中: ${directory}`;
+        try {
+          await this.device.createDirectory(directory);
+        } catch (error) {
+          // 既に存在するディレクトリはそのまま利用してコピーを続行する。
+          if (!String(error).toLowerCase().includes('exist')) throw error;
+        }
+      }
+      let completed = 0;
+      for (const file of this.githubFiles) {
+        progress.textContent = `書き込み中 (${completed + 1}/${this.githubFiles.length}): ${file.path}`;
+        const response = await fetch(file.downloadUrl);
+        if (!response.ok) throw new Error(`${file.path}: GitHub から取得できませんでした (${response.status})`);
+        await this.device.writeFile(file.path, new Uint8Array(await response.arrayBuffer()));
+        completed++;
+      }
+      progress.textContent = `完了: ${completed} ファイルを書き込みました。エラーはありません。`;
+      await this.fileList();
+    } catch (error) {
+      progress.textContent = `エラー: ${String(error)}`;
+      this.terminal.logToTerminal(`GitHub フォルダの書き込みエラー: ${String(error)}`, 'error');
+    } finally {
+      writeButton.disabled = false;
+    }
   }
 
   /**

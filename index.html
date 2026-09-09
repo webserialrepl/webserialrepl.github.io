@@ -166,6 +166,26 @@
       box-sizing: border-box;
     }
 
+    #github-copy-panel {
+      margin: 1em;
+      padding: 1em;
+      border: 1px solid var(--sl-color-neutral-300);
+      border-radius: var(--sl-border-radius-medium);
+    }
+    #github-folder-url {
+      width: min(700px, 100%);
+    }
+    #github-copy-files {
+      max-height: 10em;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+    #github-copy-progress {
+      min-height: 1.5em;
+      margin-top: 0.5em;
+    }
+
   </style>
 </head>
 <body>
@@ -200,6 +220,18 @@
       <div id="editor"></div>
     </div>
   </div>
+
+  <section id="github-copy-panel">
+    <strong>GitHub フォルダをデバイスのルートへ書き込む</strong>
+    <div>
+      <label for="github-folder-url">フォルダ URL</label>
+      <input id="github-folder-url" type="url" value="https://github.com/jcodeorg/esp32-ble-logger/tree/main/firmware">
+      <button id="github-preview-button" disabled>ファイルを確認</button>
+      <button id="github-write-button" disabled>確認したファイルを書き込む</button>
+    </div>
+    <pre id="github-copy-files" aria-live="polite">URLを入力して「ファイルを確認」を押してください。</pre>
+    <div id="github-copy-progress" aria-live="polite"></div>
+  </section>
 
   <div class="options">
     <button id="download">Download output</button>

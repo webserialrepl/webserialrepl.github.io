@@ -136,6 +136,8 @@ document.getElementById('file-tree')?.addEventListener('sl-selection-change', as
   tabs.addContentTab(path);
 });
 document.getElementById('refreshFileList')?.addEventListener('click', () => commands.emit('list'));
+document.getElementById('github-preview-button')?.addEventListener('click', () => filemgr.previewGithubFolder());
+document.getElementById('github-write-button')?.addEventListener('click', () => filemgr.writeGithubFolder());
 
 
 // run Code ボタンのクリックイベント

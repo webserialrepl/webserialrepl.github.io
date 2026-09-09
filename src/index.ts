@@ -138,6 +138,14 @@ document.getElementById('file-tree')?.addEventListener('sl-selection-change', as
 document.getElementById('refreshFileList')?.addEventListener('click', () => commands.emit('list'));
 document.getElementById('github-preview-button')?.addEventListener('click', () => filemgr.previewGithubFolder());
 document.getElementById('github-write-button')?.addEventListener('click', () => filemgr.writeGithubFolder());
+document.getElementById('github-copy-open-button')?.addEventListener('click', () => {
+  const panel = document.getElementById('github-copy-panel');
+  if (panel) panel.hidden = false;
+});
+document.getElementById('github-copy-close-button')?.addEventListener('click', () => {
+  const panel = document.getElementById('github-copy-panel');
+  if (panel) panel.hidden = true;
+});
 
 
 // run Code ボタンのクリックイベント

@@ -30,9 +30,10 @@ export class FileManager {
       const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
       const githubPreviewButton = document.getElementById('github-preview-button') as HTMLButtonElement;
       const githubWriteButton = document.getElementById('github-write-button') as HTMLButtonElement;
+      const githubOpenButton = document.getElementById('github-copy-open-button') as HTMLButtonElement;
       const customEvent = event as CustomEvent; // CustomEvent 型にキャスト
       const { status } = customEvent.detail;
-      const buttons = [refreshButton, saveFileButton, newFileButton, runCodeButton, githubPreviewButton, githubWriteButton];
+      const buttons = [refreshButton, saveFileButton, newFileButton, runCodeButton, githubPreviewButton, githubWriteButton, githubOpenButton];
       if (status === 'REPL') {
         console.log("<REPL> mode activated");
         if (!this.fileTreeDisplayed) {
@@ -62,6 +63,7 @@ export class FileManager {
     const runCodeButton = document.getElementById('runCodeButton') as HTMLButtonElement;
     const githubPreviewButton = document.getElementById('github-preview-button') as HTMLButtonElement;
     const githubWriteButton = document.getElementById('github-write-button') as HTMLButtonElement;
+    const githubOpenButton = document.getElementById('github-copy-open-button') as HTMLButtonElement;
 
     // 初期状態で無効化
     // fileSelect.disabled = true;
@@ -71,6 +73,7 @@ export class FileManager {
     runCodeButton.disabled = true;
     githubPreviewButton.disabled = true;
     githubWriteButton.disabled = true;
+    githubOpenButton.disabled = true;
 
     // 既存のファイルツリーを安全にクリア（要素が存在する場合のみ）
     const filetreeElement = document.getElementById('file-tree');
